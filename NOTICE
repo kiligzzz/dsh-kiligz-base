@@ -1,0 +1,23 @@
+dsh-kiligz-base
+Copyright (c) 2026 kiligz
+
+This distribution composes the following independently licensed packages:
+
+- @michengai/dsh-automation 0.1.34, Apache-2.0
+  https://github.com/MichengAI/dsh-automation
+- @kiligzzz/dsh-ui-appearance 0.1.7, MIT
+  https://github.com/kiligzzz/dsh-ui-appearance
+- @kiligzzz/dsh-session-archive 0.1.3, MIT
+  https://github.com/kiligzzz/dsh-session-archive
+- @kiligzzz/dsh-skill-mcp-manager 0.3.2, MIT
+  https://github.com/kiligzzz/dsh-skill-mcp-manager
+- dsh-client-auto-continue 0.11.4, MIT
+  https://github.com/HsiangNianian/dsh-auto-continue
+- dsh-vision-router 2.1.3, MIT
+  https://github.com/ysr666/dsh-vision-router
+- dsh-better-sidebar 0.18.0, MIT
+  https://github.com/omdsh-dev/DSH-better-sidebar
+
+The packages retain their own copyright notices and license terms in their
+installed distributions. Apache-2.0 requirements for dsh-automation apply to
+that package; dsh-kiligz-base does not relicense it.

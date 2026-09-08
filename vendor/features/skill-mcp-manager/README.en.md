@@ -1,0 +1,86 @@
+# dsh-skill-mcp-manager
+
+[简体中文](./README.md) | English
+
+**DSH Skill MCP Manager** for [DeepSeek Harness](https://github.com/deepseek-ai/dsh) Desktop —
+manage your MCP servers and Skills from a Settings-page UI, no config-file editing or
+DSH source changes required.
+
+| Skill page | MCP page |
+| --- | --- |
+| Toggle / delete / import / folder-sync your skills (`~/.dsh/skills`). | Add / edit / toggle / refresh / remove MCP servers (`~/.dsh/mcp.json`) and progressively load tools per session from server descriptions. |
+
+Built on the official DSH dual-face plugin mechanism (host + browser half), loaded as a
+profile bundle row — survives DSH upgrades and needs no dynamic-plugin activation.
+
+## Features
+
+**Skill management** (`~/.dsh/skills`)
+- List every skill with its description, kind (directory `SKILL.md` / flat `.md`),
+  and enabled state; search by name or description.
+- **Toggle** enable/disable by rewriting the `disable-model-invocation` frontmatter flag.
+- **Delete** (real entry → removes the file/dir; symlinked entry → removes only the link).
+- **Import** a `.md` file (name normalized to kebab-case).
+- **Folder sync** — symlink every skill from a source folder (`ln -s`), so edits in the
+  source take effect immediately.
+- **Open in editor** (macOS `open` / Linux `xdg-open`; other platforms report unsupported).
+
+**MCP management** (`~/.dsh/mcp.json`, map format)
+- Add / edit / remove servers with both transports: `stdio` (command, args, env, cwd)
+  and `streamable-http` (url, headers).
+- **Progressive per-session loading**: startup creates no MCP connections and exposes no
+  native MCP tool schemas. Once the model matches a server description it calls
+  `mcp_session(load)`, which mounts all tools from that server in the current Agent scope.
+- `mcp_session` supports `load`, `unload`, and `status`; sessions are isolated and Agent
+  disposal closes connections and unregisters tools automatically.
+- `enabled` means the server may be loaded by a session. Editing `~/.dsh/mcp.json` is picked
+  up within 3 seconds, refreshes the compact directory, and safely reconnects only sessions
+  that had already loaded the changed server.
+- **Open config** in the system editor (macOS / Linux).
+
+**Capability directory prompt section**
+Every session gets a compact `capability:mcp` section containing only configured server
+names, existing descriptions, and availability. Full tool schemas appear only after load.
+
+## Install
+
+Requires a DSH profile that loads profile bundle patches. In your profile's
+`package.json`:
+
+```json
+{
+  "dependencies": {
+    "@kiligzzz/dsh-skill-mcp-manager": "^0.3.0"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": ["@kiligzzz/dsh-skill-mcp-manager"]
+    }
+  }
+}
+```
+
+Then install and restart DSH. The plugin is a bare bundle row (its own
+`cordis.patch.yml` is discovered automatically); no manual `cordis.patch.yml` insert is
+needed.
+
+## Requirements & notes
+
+- The host half resolves `@deepseek-ai/dsh-mcp-client` from the DSH runtime via the
+  `loader` service (fallback `import()`). It is **not** bundled — the runtime provides it.
+- Browser half needs the `slots` service (`settings.section` slot) and talks to the host
+  over same-origin fetch `/capabilities-api/*` (registered with retry, no race on boot).
+- `~/.dsh/mcp.json` is written in **map format** `{ "name": { ... } }`. A legacy
+  `{ "servers": [...] }` array is auto-migrated on first read.
+- Deleting / toggling skills writes files under `~/.dsh/skills` — destructive actions
+  confirm in the UI first.
+
+## Development
+
+No build step: `index.js` (host) and `lib/client.js` (browser half) are plain
+JavaScript. The browser half is loaded via `window.__ModuleLoader__.load` with the
+plugin id matching the package name.
+
+## License
+
+MIT

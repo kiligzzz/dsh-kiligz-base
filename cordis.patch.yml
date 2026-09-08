@@ -1,0 +1,24 @@
+# One Profile bundle and one Loader row. The base plugin mounts the seven
+# feature implementations as child Cordis fibers so their service injections
+# and disposal semantics remain intact without exposing seven bundle rows.
+- insert:
+    - id: dsh-kiligz-base
+      name: '@kiligzzz/dsh-kiligz-base'
+      config:
+        automation:
+          maxConcurrentRuns: 2
+          runTimeoutMinutes: 60
+          misfireGraceMinutes: 15
+          historyLimit: 200
+        vision:
+          progressiveTools: false
+
+# Preserve the Vision Router attachment policy that the former bundle owned.
+- id: attachment-local
+  config:
+    maxImageBytes: 20971520
+    maxImagePixels: 100000000
+    maxImageDimension: 10000
+    normalizedImageMaxBytes: 20971520
+    normalizedImageMaxPixels: 100000000
+    normalizedImageMaxDimension: 10000

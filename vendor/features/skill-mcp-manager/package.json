@@ -1,0 +1,56 @@
+{
+  "name": "@kiligzzz/dsh-skill-mcp-manager",
+  "version": "0.3.2",
+  "description": "DSH Skill MCP Manager for DeepSeek Harness Desktop: manage MCP servers and Skills from Settings, publish compact capability descriptions, and progressively load each MCP server's tools only into the requesting session. Dual-face dsh plugin, no DSH source changes.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "plugin",
+    "mcp",
+    "skill",
+    "capability",
+    "settings"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kiligzzz/dsh-skill-mcp-manager.git"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.7 || ^0.1.1-rc.1",
+    "@deepseek-ai/dsh-client-store": "^0.1.0-rc.7 || ^0.1.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.7 || ^0.1.1-rc.1",
+    "cordis": "^4.0.0-rc.7 || ^4.0.0",
+    "react": "^18.2.0"
+  }
+}
