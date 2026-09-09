@@ -29,6 +29,42 @@ const featureClientBundles = [
   'node_modules/dsh-better-sidebar/lib/client.js',
 ]
 
+function replaceOnce(source, before, after, label) {
+  if (!source.includes(before)) throw new Error(`dsh-kiligz-base: ${label} patch marker not found`)
+  return source.replace(before, after)
+}
+
+function exposePanel(path, source) {
+  const tail = 'return module.exports;'
+  if (path.includes('dsh-automation')) {
+    return replaceOnce(
+      source,
+      tail,
+      'module.exports.__dshKiligz = { AutomationView, createAutomationRuntime };\n' + tail,
+      'automation panel export',
+    )
+  }
+  if (path.includes('skill-mcp-manager')) {
+    let output = replaceOnce(
+      source,
+      'const React = require("react");',
+      'const React = require("react");\nconst { IconEditOutline16, IconRefreshOutline16, IconTrashOutline16 } = require("@deepseek-ai/dsh-client-ui-primitives");',
+      'skill icon import',
+    )
+    output = output
+      .replaceAll('}, "✎")', '}, React.createElement(IconEditOutline16, { size: 14 }))')
+      .replaceAll('}, "🗑")', '}, React.createElement(IconTrashOutline16, { size: 14 }))')
+      .replaceAll('}, "⟳")', '}, React.createElement(IconRefreshOutline16, { size: 14 }))')
+    return replaceOnce(
+      output,
+      tail,
+      'module.exports.__dshKiligz = { SkillPage, McpPage };\n' + tail,
+      'skill MCP panel export',
+    )
+  }
+  return source
+}
+
 /** Extract a classic bundle's factory without materializing its plugin. */
 async function factorySource(path) {
   const source = await readFile(path, 'utf8')
@@ -46,7 +82,8 @@ async function factorySource(path) {
   if (registration === undefined || typeof registration.factory !== 'function') {
     throw new Error(`dsh-kiligz-base: ${path} did not register a Client factory`)
   }
-  return registration.factory.toString().replace(/accent-color\s*:[^;}'"]+;?/g, '')
+  const factory = registration.factory.toString().replace(/accent-color\s*:[^;}'"]+;?/g, '')
+  return exposePanel(path, factory)
 }
 
 await mkdir('lib', { recursive: true })

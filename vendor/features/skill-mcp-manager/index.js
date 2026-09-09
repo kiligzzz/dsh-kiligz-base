@@ -625,6 +625,12 @@ export function apply(ctx) {
       if (!ok) throw new Error('当前平台不支持打开文件（仅 macOS / Linux）')
       return { ok: true }
     },
+    async openSkillsDirectory() {
+      fs.mkdirSync(skillsRoot, { recursive: true })
+      const ok = await openWithSystem(skillsRoot)
+      if (!ok) throw new Error('当前平台不支持打开目录（仅 macOS / Linux）')
+      return { ok: true }
+    },
     async listServers() {
       const servers = readServers().map((s) => Object.assign({}, s, {
         tools: catalog[s.name]?.tools || [],
@@ -737,6 +743,7 @@ export function apply(ctx) {
         switch (pathname) {
           case '/capabilities-api/skill/toggle': out = await service.toggleSkill(body.name, body.enabled); break
           case '/capabilities-api/skill/open': out = await service.openSkill(body.name); break
+          case '/capabilities-api/skill/open-directory': out = await service.openSkillsDirectory(); break
           case '/capabilities-api/skill/delete': out = await service.deleteSkill(body.name); break
           case '/capabilities-api/skill/import': out = await service.importSkill(body.name, body.content); break
           case '/capabilities-api/skill/sync': out = await service.syncSkills(body.source); break
