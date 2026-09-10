@@ -92,6 +92,17 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column!important;a
 .dshAcSave{appearance:none;font:inherit;cursor:pointer;border:1px solid transparent!important;border-radius:8px!important;background:var(--dsw-alias-label-primary)!important;color:var(--dsw-alias-bg-layer-3)!important;padding:5px 14px!important;font-size:13px!important;line-height:1.5!important}
 .dshAcSave:disabled,.dshAcDiscard:disabled{opacity:.4!important;cursor:default}
 .dshAcRelayMark,.dshAcJourney,.dshAcGithub{display:none!important}
+/* Only the master switch of the auto-continue card stays visible. */
+.dshAcFormCanvas .dshAcFormSection:not(.dshAcFormSection-handoff){display:none!important}
+.dshAcFormSection-handoff .dshAcSectionHead{display:none!important}
+.dshAcFormCanvas .dshAcField:not(:has(#auto-continue-paused)){display:none!important}
+/* The trimmed Vision Bridge panel sits inside the shared card body. */
+.vbr-body .vbr{max-width:none;gap:10px;padding:12px 0 4px}
+.vbr-field>label{color:var(--dsw-alias-label-secondary);font-size:13px;font-weight:500;margin:0}
+.vbr-body .row{margin-top:4px}
+.vbr-body .row>button{appearance:none;font:inherit;cursor:pointer;border:1px solid var(--dsw-alias-border-l2)!important;border-radius:8px!important;background:var(--dsw-alias-bg-layer-2)!important;color:var(--dsw-alias-label-primary)!important;padding:5px 14px!important;font-size:13px!important;line-height:1.5!important}
+.vbr-body .row>button.primary{border-color:transparent!important;background:var(--dsw-alias-label-primary)!important;color:var(--dsw-alias-bg-layer-3)!important}
+.vbr-body .row>button:disabled{opacity:.4;cursor:default}
 @media (prefers-reduced-motion:reduce){.kb-footer-entry,.dsa-footer-entry,.kb-icon-button,.cm-ico,.dsh-st-icon,.dsh-st-more,.cm-switch,.cm-switch::after,.dsh-st-switch,.dsh-st-switch::after,.dsh-st-overview-toggle>span,.dsh-st-overview-toggle>span::after,[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"],[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"]>span,.vbr-card,.dshAcCard,.vbr-card-chevron,.dshAcChevron{transition:none!important;animation:none!important}}
 `
 

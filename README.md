@@ -33,7 +33,7 @@ Archived sessions
 Settings
 ```
 
-The three management entries open independent, shared-format dialogs and do not appear as duplicate Settings sections. The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces. Vision Bridge runs on its configured `hybrid` mode and adds no control next to the message input; its settings card and PDF drop/paste path stay available.
+The three management entries open independent, shared-format dialogs and do not appear as duplicate Settings sections. The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces. Vision Bridge runs on its configured `hybrid` mode and adds no control next to the message input; its Plugins-tab card keeps only provider and model selection, and the PDF drop/paste path stays available. The auto-continue card is trimmed to its master switch. Both cards follow the native PluginCard metrics.
 
 ## Model Experience
 

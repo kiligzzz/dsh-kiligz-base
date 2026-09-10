@@ -3,7 +3,9 @@
 ## 0.2.0
 
 - Replace `dsh-vision-router` with `@goodandready/dsh-vision-bridge` (pinned GitHub commit) and drop the generated Vision Router client-boundary prelude.
-- Drop the Bridge composer controls entirely: vision stays on the configured `hybrid` mode, so neither a mode toggle nor a PDF button is added next to the message input. The Bridge settings card and the PDF drop/paste path remain available.
+- Drop the Bridge composer controls entirely: vision stays on the configured `hybrid` mode, so neither a mode toggle nor a PDF button is added next to the message input. The PDF drop/paste path remains available.
+- Match the auto-continue and Vision Bridge cards in Settings → Plugins to the native PluginCard metrics, and drop the auto-continue card's decorative relay mark, journey strip, and repository promo block.
+- Trim both cards to what a single user actually needs: the auto-continue card keeps only its master switch, and the Vision Bridge card keeps only provider and model selection in Chinese.
 - Unify the scheduled-task, SKILL-management, and MCP-management modal shell so the search row, actions, and body no longer leave blank space.
 - Configure the Bridge settings namespace (`dsh-vision-bridge`) with `popmart/gpt-5.6-sol` in `hybrid` mode; the legacy `vision-router` block is retained so a rollback keeps working.
 
