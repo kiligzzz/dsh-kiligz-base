@@ -110,46 +110,31 @@ function exposePanel(path, source) {
     )
   }
   if (path.includes('dsh-vision-bridge')) {
-    let output = replaceOnce(
-      source,
-      "    let react_jsx_runtime = require('react/jsx-runtime')",
-      `    let react_jsx_runtime = require('react/jsx-runtime')
-    const VisionGlyph = () => react.createElement('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, react.createElement('path', { d: 'M1.5 8s2.35-4 6.5-4 6.5 4 6.5 4-2.35 4-6.5 4-6.5-4-6.5-4Z' }), react.createElement('circle', { cx: 8, cy: 8, r: 1.8 }))
-    const PdfGlyph = () => react.createElement('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, react.createElement('path', { d: 'M3 1.75h6l4 4v8.5H3V1.75Z' }), react.createElement('path', { d: 'M9 1.75v4h4M5.25 9h5.5M5.25 11.25h4' }))`,
-      'Vision Bridge composer icons',
-    )
-    output = output
-      .replace('transition:all .15s', 'transition:background-color .16s ease,border-color .16s ease,color .16s ease')
-      .replace('.vbr-input-btn.active{color:var(--dsw-alias-brand-primary,#6366f1);border-color:var(--dsw-alias-brand-primary,#6366f1)}', '.vbr-input-btn.active{color:var(--dsw-static-green-500);border-color:var(--dsw-static-green-500);background:color-mix(in srgb,var(--dsw-static-green-500) 14%,transparent)}.vbr-input-btn svg{display:block;flex:none}')
+    // The Bridge composer toggle and its PDF button are not part of this
+    // bundle's interaction model: vision stays on the configured hybrid mode,
+    // so the whole composer control slot is dropped. The PDF drop/paste path
+    // stays available and only keeps its localized toasts.
+    let output = source
       .replace("        showToast('📄 Конвертация страниц PDF...', false)", "        showToast('正在转换 PDF 页面…', false)")
       .replace("          showToast('✅ Загружено ' + d.count + ' стр. из PDF', false)", "          showToast('PDF 已载入：' + d.count + ' 页', false)")
       .replace("          showToast('❌ Ошибка PDF: ' + (e.message || e), true)", "          showToast('PDF 处理失败：' + (e.message || e), true)")
       .replace("          t.style.background = isErr ? '#dc2626' : '#2563eb'\n          t.style.color = '#fff'", "          t.style.background = 'var(--dsw-alias-bg-layer-2)'\n          t.style.color = isErr ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-primary)'\n          t.style.border = '1px solid var(--dsw-alias-border-l2)'")
-    output = replaceOnce(
-      output,
-      "      function VisionInputControls(props) {\n        const [currentMode, setCurrentMode] = react.useState('hybrid')",
-      "      function VisionInputControls(props) {\n        const isZh = String(props.locale || '').slice(0, 2) === 'zh'\n        const [currentMode, setCurrentMode] = react.useState('hybrid')",
-      'Vision Bridge input locale',
-    )
-    output = replaceOnce(
-      output,
-      '(props) => react.createElement(VisionInputControls, { ...props }),',
-      '(props) => react.createElement(VisionInputControls, { ...props, locale: useActiveLocale(ctx) }),',
-      'Vision Bridge input props',
-    )
+      .replace('transition:all .15s', 'transition:background-color .16s ease,border-color .16s ease,color .16s ease')
+      .replace('      // ------------------------------------------------------- conversation.input.right / composer bar\n      // Renders the mode toggle ("👁️ Vision: hybrid") and the "📄 +PDF" button right next to the message input.\n', '      // Composer controls stay disabled in this bundle; PDF drop and paste remain available.\n')
     output = removeBetween(
       output,
-      "        const modeTitle = currentMode === 'hybrid'",
-      "\n        return react.createElement('div', {",
-      `        const modeTitle = isZh
-          ? (currentMode === 'hybrid' ? '看图：自动描述和工具' : currentMode === 'llm' ? '看图：自动描述' : '看图：仅工具')
-          : (currentMode === 'hybrid' ? 'Vision: automatic description and tools' : currentMode === 'llm' ? 'Vision: automatic description' : 'Vision: tools only')
-`,
-      'Vision Bridge input title',
+      '      function VisionInputControls(props) {',
+      '      // Slot 1: conversation.input.right',
+      '',
+      'Vision Bridge composer component',
     )
-    output = output
-      .replace("            title: modeTitle + ' — нажмите для переключения',\n            onClick: toggleMode,\n          }, '👁️ Vision: ' + currentMode)", "            title: modeTitle,\n            'aria-label': modeTitle,\n            'aria-pressed': currentMode === 'hybrid',\n            onClick: toggleMode,\n          }, react.createElement(VisionGlyph), (isZh ? '看图' : 'Vision') + ' · ' + currentMode)")
-      .replace("            title: 'Загрузить и конвертировать PDF-документ',\n            onClick: onPdfClick,\n          }, '📄 +PDF')", "            title: isZh ? '上传并转换 PDF' : 'Upload and convert PDF',\n            'aria-label': isZh ? '上传并转换 PDF' : 'Upload and convert PDF',\n            onClick: onPdfClick,\n          }, react.createElement(PdfGlyph), 'PDF')")
+    output = removeIncluding(
+      output,
+      '      // Slot 1: conversation.input.right',
+      '      } catch (_e) {}',
+      '',
+      'Vision Bridge composer slot',
+    )
     return output
   }
   return source
