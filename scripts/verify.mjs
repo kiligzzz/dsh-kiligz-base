@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises'
 const pkg = JSON.parse(await readFile('package.json', 'utf8'))
 const patch = await readFile('cordis.patch.yml', 'utf8')
 const client = await readFile('lib/client.js', 'utf8')
+const host = await readFile('lib/index.js', 'utf8')
 const manifest = JSON.parse(await readFile('vendor/manifest.json', 'utf8'))
 
 const failures = []
@@ -15,8 +16,16 @@ if (manifest.features?.length !== 7) failures.push('vendor manifest must describ
 if (!client.includes('__dshKiligzFeatureFactories')) failures.push('client bundle does not compose feature factories')
 if ((client.match(/window\.__ModuleLoader__\.load\(/g) ?? []).length !== 1) failures.push('client bundle must register exactly one ModuleLoader factory')
 if (client.includes('accent-color:')) failures.push('client bundle must not use accent-color')
-if (!client.includes('[role="switch"]')) failures.push('client bundle lacks the unified switch contract')
-for (const path of ['lib/index.js', 'lib/client.js']) {
+if (!client.includes('.cm-switch') || !client.includes('.dsh-st-switch')) failures.push('client bundle lacks scoped switch contracts')
+if (!client.includes('--dsw-static-green-500')) failures.push('client bundle lacks green enabled switch state')
+if (!client.includes('prefers-reduced-motion:reduce')) failures.push('client bundle lacks reduced-motion handling')
+if (!client.includes('id: "automation", order: 2') || !client.includes('id: "skill", order: 3') || !client.includes('id: "mcp", order: 4') || !client.includes('id: `dsh-kiligz-base-${entry.id}`')) failures.push('client bundle lacks three independent footer entries')
+if (client.includes('id: "scheduled-tasks"') || client.includes('id: "capabilities-skills"') || client.includes('id: "capabilities-mcp"')) failures.push('client bundle still exposes management Settings sections')
+if (!host.includes('data-dsh-kiligz-vision-boundary') || !host.includes('vision-router-mode-toggle') || !host.includes('conversation.input.right')) failures.push('host bundle lacks restored Vision input boundary')
+if (!client.includes('return { apply: module.exports.apply, inject: module.exports.inject }')) failures.push('client factory is not mutable for Vision Router decoration')
+if (!client.includes('/capabilities-api/skill/open-directory')) failures.push('client bundle lacks open Skill directory action')
+if (client.includes('}, "✎")') || client.includes('}, "🗑")') || client.includes('}, "⟳")') || client.includes('? "▾" : "▸"') || client.includes('"⟳ 刷新全部工具"')) failures.push('client bundle still contains legacy action glyphs')
+for (const path of ['lib/index.js', 'lib/client.js', 'assets/mcp-link.svg']) {
   try { await stat(path) } catch { failures.push(`missing ${path}`) }
 }
 if (failures.length > 0) throw new Error(`dsh-kiligz-base verify failed:\n- ${failures.join('\n- ')}`)

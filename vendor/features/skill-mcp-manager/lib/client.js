@@ -5,6 +5,7 @@ window.__ModuleLoader__.load({
     var exports = module.exports;
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
     const React = require("react");
+    const { Button, Modal } = require("@deepseek-ai/dsh-client-ui-primitives");
 
     // ── 样式注入 ──
     const CSS =
@@ -92,25 +93,34 @@ window.__ModuleLoader__.load({
     function msg(e) { return String((e && e.message) || e); }
 
     function Switch({ on, onChange }) {
+      const label = on ? "点击禁用" : "点击启用";
       return React.createElement("button", {
+        type: "button",
+        role: "switch",
+        "aria-checked": on,
+        "aria-label": label,
         className: "cm-switch" + (on ? " on" : ""),
         onClick: (ev) => { ev.stopPropagation(); onChange(!on); },
-        title: on ? "点击禁用" : "点击启用",
+        title: label,
       });
     }
 
     function ConfirmModal({ title, message, detail, confirmText, onConfirm, onCancel }) {
-      return React.createElement("div", { className: "cm-modal", onClick: onCancel },
-        React.createElement("div", { className: "cm-modal-box", onClick: (e) => e.stopPropagation() },
-          React.createElement("div", { className: "cm-title", style: { marginBottom: 8 } }, title),
-          React.createElement("div", { className: "cm-sub", style: { marginBottom: 6 } }, message),
-          detail ? React.createElement("div", { className: "cm-src", style: { marginBottom: 14 } }, detail) : React.createElement("div", { style: { marginBottom: 14 } }),
-          React.createElement("div", { className: "cm-actions" },
-            React.createElement("button", { className: "cm-btn", onClick: onCancel }, "取消"),
-            React.createElement("button", { className: "cm-btn danger", onClick: onConfirm }, confirmText || "删除"),
-          ),
+      return React.createElement(Modal, {
+        open: true,
+        title,
+        closeLabel: "关闭",
+        onClose: onCancel,
+        className: "cm-confirm-modal",
+        footer: React.createElement(React.Fragment, null,
+          React.createElement(Button, { variant: "outline", onClick: onCancel }, "取消"),
+          React.createElement(Button, { variant: "primary", className: "cm-danger-action", onClick: onConfirm }, confirmText || "删除"),
         ),
-      );
+      },
+      React.createElement("div", { className: "cm-confirm-copy" },
+        React.createElement("p", null, message),
+        detail ? React.createElement("code", null, detail) : null,
+      ));
     }
 
     function normalizeName(fname) {

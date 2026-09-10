@@ -11,7 +11,7 @@
 - Vision Router
 - Better Sidebar
 
-The package owns the shared client shell and UI normalization layer. Every capability remains a separate Cordis feature row in one group, preserving its native Host lifecycle, settings namespace, storage, tools, and routes.
+The package owns the shared client shell and UI normalization layer. The one Profile row starts each capability as a child Cordis fiber, preserving its native Host lifecycle, settings namespace, storage, tools, and routes.
 
 ## Install
 
@@ -33,7 +33,7 @@ Archived sessions
 Settings
 ```
 
-The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces.
+The three management entries open independent, shared-format dialogs and do not appear as duplicate Settings sections. The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces. Vision Router retains its native composer-side Vision toggle.
 
 ## Model Experience
 

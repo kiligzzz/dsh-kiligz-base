@@ -59,7 +59,7 @@ check('host cleans Agent MCP state', host.includes("ctx.on('agent/disposed'"))
 
 // 5. REST surface used by the client exists in the host
 for (const ep of ['/capabilities-api', '/capabilities-api/skill/toggle', '/capabilities-api/skill/open',
-  '/capabilities-api/skill/delete', '/capabilities-api/skill/import', '/capabilities-api/skill/sync',
+  '/capabilities-api/skill/open-directory', '/capabilities-api/skill/delete', '/capabilities-api/skill/import', '/capabilities-api/skill/sync',
   '/capabilities-api/mcp/save', '/capabilities-api/mcp/remove', '/capabilities-api/mcp/refresh',
   '/capabilities-api/mcp/open-config']) {
   check('host handles ' + ep, host.includes("'" + ep + "'"))

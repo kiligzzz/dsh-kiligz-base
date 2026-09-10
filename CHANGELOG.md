@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- Restore Vision Router's native composer-side Vision toggle for the aggregated client factory.
+- Register scheduled tasks, SKILL management, and MCP management as independent sidebar footer entries and remove their duplicate Settings sections.
+- Use a faithful thin-line SVG redraw of the supplied MCP reference icon.
+- Standardize outline icons, modal focus containment, focus return, semantic switches, reduced motion, inputs, buttons, and list surfaces.
+
 ## 0.1.1
 
 - Open scheduled tasks, SKILL management, and MCP management in independent, shared-format modals instead of Settings navigation.

@@ -1,6 +1,6 @@
 {
   "name": "@kiligzzz/dsh-kiligz-base",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Unified DeepSeek Harness capability bundle with consistent UI for automation, skills, MCP, archives, appearance, vision, auto-continue, and sidebar tools.",
   "license": "MIT",
   "type": "module",
@@ -16,6 +16,7 @@
     "src",
     "scripts",
     "vendor",
+    "assets",
     "cordis.patch.yml",
     "README.md",
     "README.zh-CN.md",
