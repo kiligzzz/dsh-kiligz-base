@@ -13,8 +13,8 @@ This distribution composes the following independently licensed packages:
   https://github.com/kiligzzz/dsh-skill-mcp-manager
 - dsh-client-auto-continue 0.11.4, MIT
   https://github.com/HsiangNianian/dsh-auto-continue
-- dsh-vision-router 2.1.3, MIT
-  https://github.com/ysr666/dsh-vision-router
+- @goodandready/dsh-vision-bridge 0.5.29, MIT
+  https://github.com/GooDAnDreaDY/dsh-vision-bridge
 - dsh-better-sidebar 0.18.0, MIT
   https://github.com/omdsh-dev/DSH-better-sidebar
 

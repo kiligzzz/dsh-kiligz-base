@@ -1,7 +1,6 @@
 import { build } from 'esbuild'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import vm from 'node:vm'
-import { CLIENT_PRESENTATION_PRELUDE } from '../node_modules/dsh-vision-router/lib/client-presentation-boundary.js'
 
 const id = '@kiligzzz/dsh-kiligz-base'
 const hostExternal = [
@@ -10,7 +9,7 @@ const hostExternal = [
   '@michengai/dsh-automation',
   'dsh-better-sidebar',
   'dsh-client-auto-continue',
-  'dsh-vision-router',
+  '@goodandready/dsh-vision-bridge',
 ]
 const clientExternal = [
   '@deepseek-ai/*',
@@ -26,7 +25,7 @@ const featureClientBundles = [
   'vendor/features/ui-appearance/lib/client.js',
   'node_modules/@michengai/dsh-automation/lib/client.js',
   'node_modules/dsh-client-auto-continue/lib/client.js',
-  'node_modules/dsh-vision-router/lib/client.js',
+  'node_modules/@goodandready/dsh-vision-bridge/lib/client.js',
   'node_modules/dsh-better-sidebar/lib/client.js',
 ]
 
@@ -110,29 +109,50 @@ function exposePanel(path, source) {
       'skill MCP panel export',
     )
   }
+  if (path.includes('dsh-vision-bridge')) {
+    let output = replaceOnce(
+      source,
+      "    let react_jsx_runtime = require('react/jsx-runtime')",
+      `    let react_jsx_runtime = require('react/jsx-runtime')
+    const VisionGlyph = () => react.createElement('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, react.createElement('path', { d: 'M1.5 8s2.35-4 6.5-4 6.5 4 6.5 4-2.35 4-6.5 4-6.5-4-6.5-4Z' }), react.createElement('circle', { cx: 8, cy: 8, r: 1.8 }))
+    const PdfGlyph = () => react.createElement('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, react.createElement('path', { d: 'M3 1.75h6l4 4v8.5H3V1.75Z' }), react.createElement('path', { d: 'M9 1.75v4h4M5.25 9h5.5M5.25 11.25h4' }))`,
+      'Vision Bridge composer icons',
+    )
+    output = output
+      .replace('transition:all .15s', 'transition:background-color .16s ease,border-color .16s ease,color .16s ease')
+      .replace('.vbr-input-btn.active{color:var(--dsw-alias-brand-primary,#6366f1);border-color:var(--dsw-alias-brand-primary,#6366f1)}', '.vbr-input-btn.active{color:var(--dsw-static-green-500);border-color:var(--dsw-static-green-500);background:color-mix(in srgb,var(--dsw-static-green-500) 14%,transparent)}.vbr-input-btn svg{display:block;flex:none}')
+      .replace("        showToast('📄 Конвертация страниц PDF...', false)", "        showToast('正在转换 PDF 页面…', false)")
+      .replace("          showToast('✅ Загружено ' + d.count + ' стр. из PDF', false)", "          showToast('PDF 已载入：' + d.count + ' 页', false)")
+      .replace("          showToast('❌ Ошибка PDF: ' + (e.message || e), true)", "          showToast('PDF 处理失败：' + (e.message || e), true)")
+      .replace("          t.style.background = isErr ? '#dc2626' : '#2563eb'\n          t.style.color = '#fff'", "          t.style.background = 'var(--dsw-alias-bg-layer-2)'\n          t.style.color = isErr ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-primary)'\n          t.style.border = '1px solid var(--dsw-alias-border-l2)'")
+    output = replaceOnce(
+      output,
+      "      function VisionInputControls(props) {\n        const [currentMode, setCurrentMode] = react.useState('hybrid')",
+      "      function VisionInputControls(props) {\n        const isZh = String(props.locale || '').slice(0, 2) === 'zh'\n        const [currentMode, setCurrentMode] = react.useState('hybrid')",
+      'Vision Bridge input locale',
+    )
+    output = replaceOnce(
+      output,
+      '(props) => react.createElement(VisionInputControls, { ...props }),',
+      '(props) => react.createElement(VisionInputControls, { ...props, locale: useActiveLocale(ctx) }),',
+      'Vision Bridge input props',
+    )
+    output = removeBetween(
+      output,
+      "        const modeTitle = currentMode === 'hybrid'",
+      "\n        return react.createElement('div', {",
+      `        const modeTitle = isZh
+          ? (currentMode === 'hybrid' ? '看图：自动描述和工具' : currentMode === 'llm' ? '看图：自动描述' : '看图：仅工具')
+          : (currentMode === 'hybrid' ? 'Vision: automatic description and tools' : currentMode === 'llm' ? 'Vision: automatic description' : 'Vision: tools only')
+`,
+      'Vision Bridge input title',
+    )
+    output = output
+      .replace("            title: modeTitle + ' — нажмите для переключения',\n            onClick: toggleMode,\n          }, '👁️ Vision: ' + currentMode)", "            title: modeTitle,\n            'aria-label': modeTitle,\n            'aria-pressed': currentMode === 'hybrid',\n            onClick: toggleMode,\n          }, react.createElement(VisionGlyph), (isZh ? '看图' : 'Vision') + ' · ' + currentMode)")
+      .replace("            title: 'Загрузить и конвертировать PDF-документ',\n            onClick: onPdfClick,\n          }, '📄 +PDF')", "            title: isZh ? '上传并转换 PDF' : 'Upload and convert PDF',\n            'aria-label': isZh ? '上传并转换 PDF' : 'Upload and convert PDF',\n            onClick: onPdfClick,\n          }, react.createElement(PdfGlyph), 'PDF')")
+    return output
+  }
   return source
-}
-
-async function writeVisionBoundarySource() {
-  const adaptedPrelude = CLIENT_PRESENTATION_PRELUDE.replace(
-    "var TARGET = 'dsh-vision-router';",
-    `var TARGET = ${JSON.stringify(id)};`,
-  )
-  const source = `const PRELUDE = ${JSON.stringify(adaptedPrelude)};
-const MARK = 'data-dsh-kiligz-vision-boundary';
-function inject(html) {
-  if (typeof html !== 'string' || html.includes(MARK)) return html;
-  const script = '<script ' + MARK + '>' + PRELUDE.replace(/<\\/script/gi, '<\\\\/script') + '</script>';
-  const closeHead = html.indexOf('</head>');
-  return closeHead < 0 ? html + script : html.slice(0, closeHead) + script + html.slice(closeHead);
-}
-export function installBaseVisionClientBoundary(ctx) {
-  ctx.inject?.(['webServer'], (webCtx) => {
-    webCtx.effect(() => webCtx.webServer.tapIndex(inject), 'dsh-kiligz-base: Vision input boundary');
-  });
-}
-`
-  await writeFile('src/vision-client-boundary.generated.js', source)
 }
 
 /** Extract a classic bundle's factory without materializing its plugin. */
@@ -152,12 +172,14 @@ async function factorySource(path) {
   if (registration === undefined || typeof registration.factory !== 'function') {
     throw new Error(`dsh-kiligz-base: ${path} did not register a Client factory`)
   }
-  const factory = registration.factory.toString().replace(/accent-color\s*:[^;}'"]+;?/g, '')
+  const factory = registration.factory
+    .toString()
+    .replace(/accent-color\s*:[^;}'"]+;?/g, '')
+    .replace(/[ \t]+$/gm, '')
   return exposePanel(path, factory)
 }
 
 await mkdir('lib', { recursive: true })
-await writeVisionBoundarySource()
 await build({
   entryPoints: ['src/index.js'],
   outfile: 'lib/index.js',

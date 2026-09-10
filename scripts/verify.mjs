@@ -21,8 +21,10 @@ if (!client.includes('--dsw-static-green-500')) failures.push('client bundle lac
 if (!client.includes('prefers-reduced-motion:reduce')) failures.push('client bundle lacks reduced-motion handling')
 if (!client.includes('id: "automation", order: 2') || !client.includes('id: "skill", order: 3') || !client.includes('id: "mcp", order: 4') || !client.includes('id: `dsh-kiligz-base-${entry.id}`')) failures.push('client bundle lacks three independent footer entries')
 if (client.includes('id: "scheduled-tasks"') || client.includes('id: "capabilities-skills"') || client.includes('id: "capabilities-mcp"')) failures.push('client bundle still exposes management Settings sections')
-if (!host.includes('data-dsh-kiligz-vision-boundary') || !host.includes('vision-router-mode-toggle') || !host.includes('conversation.input.right')) failures.push('host bundle lacks restored Vision input boundary')
-if (!client.includes('return { apply: module.exports.apply, inject: module.exports.inject }')) failures.push('client factory is not mutable for Vision Router decoration')
+if (!host.includes('@goodandready/dsh-vision-bridge')) failures.push('host bundle lacks Vision Bridge integration')
+if (!client.includes('.vbr-input-btn') || !client.includes("'看图'")) failures.push('client bundle lacks Vision Bridge input controls')
+if (pkg.dependencies?.['dsh-vision-router'] !== undefined || patch.includes('dsh-vision-router') || host.includes('dsh-vision-router') || client.includes('dsh-vision-router')) failures.push('dsh-vision-router must be absent from package metadata and build artifacts')
+if (!client.includes('return { apply: module.exports.apply, inject: module.exports.inject }')) failures.push('client factory export is incomplete')
 if (!client.includes('/capabilities-api/skill/open-directory')) failures.push('client bundle lacks open Skill directory action')
 if (client.includes('}, "✎")') || client.includes('}, "🗑")') || client.includes('}, "⟳")') || client.includes('? "▾" : "▸"') || client.includes('"⟳ 刷新全部工具"')) failures.push('client bundle still contains legacy action glyphs')
 for (const path of ['lib/index.js', 'lib/client.js', 'assets/mcp-link.svg']) {

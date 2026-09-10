@@ -1,6 +1,6 @@
 # dsh-kiligz-base
 
-`@kiligzzz/dsh-kiligz-base` 是一个 DeepSeek Harness Profile bundle，把定时任务、外观、会话归档、SKILL 管理、MCP 管理、自动续传、Vision Router 和 Better Sidebar 统一为一次安装。
+`@kiligzzz/dsh-kiligz-base` 是一个 DeepSeek Harness Profile bundle，把定时任务、外观、会话归档、SKILL 管理、MCP 管理、自动续传、Vision Bridge 和 Better Sidebar 统一为一次安装。
 
 包本身提供统一 Client 壳层和控件视觉；Profile 只挂载一条 base row，七项能力作为其 Cordis 子 Fiber 运行，因此保留各自的 Host 生命周期、设置 namespace、持久化数据、工具和路由。
 
@@ -22,7 +22,7 @@ MCP 管理
 设置
 ```
 
-三个管理入口分别打开独立的统一弹窗，不在 Settings 中重复显示。统一层只使用 DSH 语义化 token，并统一按钮、搜索框、列表、开关和复选框的视觉；Vision Router 原生的输入区“识图”开关继续保留。
+三个管理入口分别打开独立的统一弹窗，不在 Settings 中重复显示。统一层只使用 DSH 语义化 token，并统一按钮、搜索框、列表、开关和复选框的视觉；Vision Bridge 原生的输入区“看图”开关继续保留，并按统一规范改为细线 SVG 图标、跟随界面语言的中文标签和绿色开启态。
 
 ## 已知限制与后续工作
 

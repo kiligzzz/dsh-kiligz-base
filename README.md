@@ -8,7 +8,7 @@
 - Skill management
 - MCP management
 - auto continue
-- Vision Router
+- Vision Bridge
 - Better Sidebar
 
 The package owns the shared client shell and UI normalization layer. The one Profile row starts each capability as a child Cordis fiber, preserving its native Host lifecycle, settings namespace, storage, tools, and routes.
@@ -33,11 +33,11 @@ Archived sessions
 Settings
 ```
 
-The three management entries open independent, shared-format dialogs and do not appear as duplicate Settings sections. The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces. Vision Router retains its native composer-side Vision toggle.
+The three management entries open independent, shared-format dialogs and do not appear as duplicate Settings sections. The shared shell uses DSH semantic tokens and normalizes buttons, search inputs, lists, switches, and checkboxes across integrated feature surfaces. Vision Bridge keeps its native composer-side Vision toggle, restyled with thin-line SVG icons, a localized label, and the shared green active state.
 
 ## Model Experience
 
-The bundle preserves the original tool names and prompt behavior of all included features. It neither adds model-visible prompts nor modifies existing tool schemas. Vision Router and Automation retain their existing model-visible capability and schedule behavior.
+The bundle preserves the original tool names and prompt behavior of all included features. It neither adds model-visible prompts nor modifies existing tool schemas. Vision Bridge and Automation retain their existing model-visible capability and schedule behavior.
 
 ## Known Limitations and Deferred Work
 

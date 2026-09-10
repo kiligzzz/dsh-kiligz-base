@@ -1,6 +1,6 @@
 {
   "name": "@kiligzzz/dsh-kiligz-base",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Unified DeepSeek Harness capability bundle with consistent UI for automation, skills, MCP, archives, appearance, vision, auto-continue, and sidebar tools.",
   "license": "MIT",
   "type": "module",
@@ -74,7 +74,7 @@
     "@michengai/dsh-automation": "0.1.34",
     "dsh-better-sidebar": "0.18.0",
     "dsh-client-auto-continue": "0.11.4",
-    "dsh-vision-router": "2.1.3"
+    "@goodandready/dsh-vision-bridge": "github:GooDAnDReaDY/dsh-vision-bridge#4975550df7aa5b521bd934c3cba73b5578ffd573"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

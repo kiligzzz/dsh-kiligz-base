@@ -15,16 +15,25 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column!important;a
 .kb-footer-wrap.kb-narrow .kb-footer-label,.dsa-footer-wrap.dsa-narrow .dsa-footer-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .kb-modal{display:flex!important;flex-direction:column;width:min(760px,94vw)!important;height:min(640px,88vh)!important;border-radius:24px!important}
 .kb-modal-content{display:flex!important;flex:1;min-height:0;flex-direction:column}
-.kb-modal-content>div:last-child{display:flex;flex:1;min-height:0;overflow:auto}
+.kb-modal-content>div:last-child{display:flex!important;flex:1;min-height:0;flex-direction:column;overflow:auto}
 .kb-modal-focus{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column}
-.kb-modal .dsh-st-shell{max-width:none;padding:0 0 12px}
+/* One toolbar row for every manager modal: search on the left, actions on the right. */
+.kb-modal .dsh-st-shell{width:100%;max-width:none;margin:0;padding:0 0 12px}
 .kb-modal .dsh-st-heading{display:none}
 .kb-modal .dsh-st-top{display:block;margin:0 0 12px}
-.kb-modal .dsh-st-toolbar{justify-content:flex-end}
-.kb-modal .cm-page{height:auto;min-height:0;padding:0 0 12px}
-.kb-modal .cm-head>div:first-child{display:none}
-.kb-modal .cm-head{justify-content:flex-end;min-height:32px}
-.kb-manager-panel{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column}
+.kb-modal .dsh-st-toolbar{flex-wrap:nowrap;justify-content:flex-start;gap:8px}
+.kb-modal .dsh-st-search{flex:1;min-width:0;max-width:none}
+.kb-modal .cm-page{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px;height:auto;min-height:0;overflow:visible;padding:0 0 12px}
+.kb-modal .cm-page>.cm-head{display:contents!important}
+.kb-modal .cm-page>.cm-head>div:first-child{display:none!important}
+.kb-modal .cm-page>.cm-head>*:not(:first-child){grid-column:2;grid-row:1;justify-self:end;align-self:center}
+.kb-modal .cm-page>.cm-search{grid-column:1;grid-row:1;width:100%;align-self:center}
+.kb-modal .cm-page>*:not(.cm-head):not(.cm-search){grid-column:1/-1}
+.kb-modal .cm-search,.kb-modal .dsh-st-search{box-sizing:border-box;height:32px;min-height:32px;padding:0 12px;font-size:13px}
+/* SKILL management anchors its directory action beside the page header instead of on its own row. */
+.kb-manager-panel{position:relative;display:flex;flex:1;min-width:0;min-height:0;flex-direction:column}
+.kb-manager-panel .kb-manager-actions{position:absolute;top:2px;right:0;z-index:2;width:28px;height:28px}
+.kb-manager-panel .cm-page{grid-template-columns:minmax(0,1fr) auto 28px}
 .kb-inline-error{margin:0 0 8px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
 .kb-icon-button,.cm-ico,.dsh-st-icon,.dsh-st-more{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:28px!important;height:28px!important;min-width:28px!important;padding:0!important;border:1px solid transparent!important;border-radius:7px!important;background:transparent!important;color:var(--dsw-alias-label-secondary)!important;font-size:0!important;cursor:pointer;transition:background-color .16s ease,border-color .16s ease,color .16s ease}
 .kb-icon-button:hover,.kb-icon-button:focus-visible,.cm-ico:hover,.cm-ico:focus-visible,.dsh-st-icon:hover,.dsh-st-icon:focus-visible,.dsh-st-more:hover,.dsh-st-more:focus-visible{border-color:var(--dsw-alias-border-l2)!important;background:var(--dsw-alias-bg-layer-2)!important;color:var(--dsw-alias-label-primary)!important;outline:none}
@@ -64,11 +73,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column!important;a
 .vr-check{appearance:none!important;display:inline-grid!important;place-items:center!important;width:16px!important;height:16px!important;border:1px solid var(--dsw-alias-border-l2)!important;border-radius:4px!important;background:var(--dsw-alias-bg-layer-2)!important}
 .vr-check:checked::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--dsw-static-neutral-bluish-00)}
 .vr-check:checked{background:var(--dsw-static-green-500)!important}
-[data-vision-router-mode-toggle="true"]{border-color:var(--dsw-alias-border-l2)!important;background:transparent!important;color:var(--dsw-alias-label-secondary)!important;box-shadow:none!important;transition:background-color .16s ease,border-color .16s ease,color .16s ease!important}
-[data-vision-router-mode-toggle="true"]:hover:not(:disabled),[data-vision-router-mode-toggle="true"]:focus-visible{border-color:var(--dsw-alias-border-l3)!important;background:var(--dsw-alias-bg-layer-2)!important;color:var(--dsw-alias-label-primary)!important;outline:none}
-[data-vision-router-mode-toggle="true"][aria-pressed="true"]{border-color:var(--dsw-static-green-500)!important;background:color-mix(in srgb,var(--dsw-static-green-500) 14%,transparent)!important;color:var(--dsw-static-green-500)!important}
-[data-vision-router-mode-toggle="true"]:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3)!important}
-@media (prefers-reduced-motion:reduce){.kb-footer-entry,.dsa-footer-entry,.kb-icon-button,.cm-ico,.dsh-st-icon,.dsh-st-more,.cm-switch,.cm-switch::after,.dsh-st-switch,.dsh-st-switch::after,.dsh-st-overview-toggle>span,.dsh-st-overview-toggle>span::after,[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"],[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"]>span,[data-vision-router-mode-toggle="true"]{transition:none!important;animation:none!important}}
+@media (prefers-reduced-motion:reduce){.kb-footer-entry,.dsa-footer-entry,.kb-icon-button,.cm-ico,.dsh-st-icon,.dsh-st-more,.cm-switch,.cm-switch::after,.dsh-st-switch,.dsh-st-switch::after,.dsh-st-overview-toggle>span,.dsh-st-overview-toggle>span::after,[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"],[role="dialog"] label>input[type="checkbox"]+span[aria-hidden="true"]>span,.vbr-input-btn{transition:none!important;animation:none!important}}
 `
 
 export function installBaseStyles() {

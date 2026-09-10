@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Replace `dsh-vision-router` with `@goodandready/dsh-vision-bridge` (pinned GitHub commit) and drop the generated Vision Router client-boundary prelude.
+- Adapt the Bridge composer controls at build time: thin-line SVG icons instead of emoji, localized labels for the active UI language, and the unified green active state.
+- Unify the scheduled-task, SKILL-management, and MCP-management modal shell so the search row, actions, and body no longer leave blank space.
+- Configure the Bridge settings namespace (`dsh-vision-bridge`) with `popmart/gpt-5.6-sol` in `hybrid` mode; the legacy `vision-router` block is retained so a rollback keeps working.
+
 ## 0.1.2
 
 - Restore Vision Router's native composer-side Vision toggle for the aggregated client factory.

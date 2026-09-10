@@ -10,10 +10,10 @@
           runTimeoutMinutes: 60
           misfireGraceMinutes: 15
           historyLimit: 200
-        vision:
-          progressiveTools: false
+        visionBridge:
+          mode: hybrid
 
-# Preserve the Vision Router attachment policy that the former bundle owned.
+# Preserve the shared attachment policy for Vision Bridge image rewriting.
 - id: attachment-local
   config:
     maxImageBytes: 20971520

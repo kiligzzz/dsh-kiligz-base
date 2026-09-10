@@ -7,12 +7,11 @@
  */
 import * as automation from '@michengai/dsh-automation'
 import * as autoContinue from 'dsh-client-auto-continue'
-import * as visionRouter from 'dsh-vision-router'
+import * as visionBridge from '@goodandready/dsh-vision-bridge'
 import * as betterSidebar from 'dsh-better-sidebar'
 import * as appearance from '../vendor/features/ui-appearance/lib/index.js'
 import * as sessionArchive from '../vendor/features/session-archive/lib/index.js'
 import * as skillMcpManager from '../vendor/features/skill-mcp-manager/index.js'
-import { installBaseVisionClientBoundary } from './vision-client-boundary.generated.js'
 
 export const name = '@kiligzzz/dsh-kiligz-base'
 
@@ -25,12 +24,11 @@ const AUTOMATION_DEFAULTS = {
 
 /** Mount all integrated feature fibers under this plugin's lifecycle. */
 export function apply(ctx, config = {}) {
-  installBaseVisionClientBoundary(ctx)
   ctx.plugin(automation, { ...AUTOMATION_DEFAULTS, ...config.automation })
   ctx.plugin(appearance)
   ctx.plugin(sessionArchive)
   ctx.plugin(skillMcpManager)
   ctx.plugin(autoContinue)
-  ctx.plugin(visionRouter, { progressiveTools: false, ...config.vision })
+  ctx.plugin(visionBridge, { mode: 'hybrid', ...config.visionBridge })
   ctx.plugin(betterSidebar, config.betterSidebar)
 }

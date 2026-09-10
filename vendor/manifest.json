@@ -42,11 +42,11 @@
       "license": "MIT"
     },
     {
-      "id": "vision-router",
-      "package": "dsh-vision-router",
-      "version": "2.1.3",
-      "source": "https://github.com/ysr666/dsh-vision-router",
-      "commit": "24d7eaeafc40b1e8f117626c206b2037357c5e28",
+      "id": "vision-bridge",
+      "package": "@goodandready/dsh-vision-bridge",
+      "version": "0.5.29",
+      "source": "https://github.com/GooDAnDReaDY/dsh-vision-bridge",
+      "commit": "4975550df7aa5b521bd934c3cba73b5578ffd573",
       "license": "MIT"
     },
     {
