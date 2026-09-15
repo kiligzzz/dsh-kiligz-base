@@ -53,7 +53,7 @@ var en = {
   now: "now",
   close: "Close",
   title: "Archived sessions",
-  intro: "These sessions are hidden from every list. Restore one to bring it back into its directory, or delete it permanently.",
+  intro: "These sessions are hidden from every list. Current DSH exposes safe preview only; restore and permanent deletion are unavailable.",
   preview: "Preview",
   previewTitle: "Session preview",
   previewNote: "Showing user questions only.",
@@ -102,7 +102,7 @@ var zh = {
   now: "\u521A\u521A",
   close: "\u5173\u95ED",
   title: "\u5DF2\u5F52\u6863\u4F1A\u8BDD",
-  intro: "\u8FD9\u4E9B\u4F1A\u8BDD\u5DF2\u4ECE\u6240\u6709\u5217\u8868\u4E2D\u9690\u85CF\u3002\u6062\u590D\u4E00\u4E2A\u5373\u53EF\u628A\u5B83\u653E\u56DE\u539F\u76EE\u5F55\uFF0C\u6216\u6C38\u4E45\u5220\u9664\u5B83\u3002",
+  intro: "\u8FD9\u4E9B\u4F1A\u8BDD\u5DF2\u4ECE\u6240\u6709\u5217\u8868\u4E2D\u9690\u85CF\u3002\u5F53\u524D DSH \u53EA\u63D0\u4F9B\u5B89\u5168\u9884\u89C8\uFF0C\u6682\u4E0D\u652F\u6301\u6062\u590D\u6216\u6C38\u4E45\u5220\u9664\u3002",
   preview: "\u9884\u89C8",
   previewTitle: "\u4F1A\u8BDD\u9884\u89C8",
   previewNote: "\u4EC5\u5C55\u793A\u7528\u6237\u95EE\u9898\u3002",
@@ -110,34 +110,6 @@ var zh = {
   previewEmpty: "\u6CA1\u6709\u53EF\u663E\u793A\u7684\u95EE\u9898\u3002",
   previewFailed: "\u9884\u89C8\u5931\u8D25"
 };
-async function postAction(action, sessionId) {
-  let response;
-  try {
-    response = await fetch(ROUTE, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, sessionId })
-    });
-  } catch {
-    return { ok: false, error: { code: "network", message: "Network request failed" } };
-  }
-  let body;
-  try {
-    body = await response.json();
-  } catch {
-    return { ok: false, error: { code: "unparseable", message: "Non-JSON response" } };
-  }
-  if (response.ok && body?.ok === true) return body;
-  const failure = body;
-  return {
-    ok: false,
-    error: {
-      code: failure.error?.code ?? "http",
-      message: failure.error?.message ?? `HTTP ${response.status}`
-    }
-  };
-}
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -202,18 +174,17 @@ function buildGroups(archivedIds, byId, workspaces, t) {
 function matchesTitle(value, query) {
   return value.toLowerCase().includes(query);
 }
-function ArchivedRow({ title, updatedAt, busy, restored, onPreview, onRestore, onDeleteRequest, t }) {
+function ArchivedRow({ title, updatedAt, onPreview, t }) {
   const now = Date.now();
   const locale = t("now") === "\u521A\u521A" ? "zh" : "en";
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { className: "dsa-row", "data-restored": restored || void 0, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.StateDot, { state: restored ? "ready" : "archived" }),
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { className: "dsa-row", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.StateDot, { state: "archived" }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "button",
       {
         type: "button",
         className: "dsa-row-main",
         title: t("preview"),
-        disabled: restored,
         onClick: onPreview,
         children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: title })
       }
@@ -226,20 +197,7 @@ function ArchivedRow({ title, updatedAt, busy, restored, onPreview, onRestore, o
         title: absoluteTimeLabel(updatedAt),
         children: relativeTimeLabel(updatedAt, now, locale)
       }
-    ) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy || restored, onClick: onRestore, children: restored ? t("restored") : busy ? t("restoring") : t("restore") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        className: "dsa-delete-btn",
-        "aria-label": t("delete"),
-        title: t("delete"),
-        disabled: busy || restored,
-        onClick: onDeleteRequest,
-        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.IconTrashOutline16, {})
-      }
-    )
+    ) : null
   ] });
 }
 function PreviewModal({ session, loading, error, preview, onClose, t }) {
@@ -271,17 +229,12 @@ function PreviewModal({ session, loading, error, preview, onClose, t }) {
     }
   );
 }
-function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
+function PanelBody({ useWorkspaces, useSessions, t }) {
   const archivedIds = useWorkspaces((state) => state.archivedSessionIds);
   const byId = useSessions((state) => state.byId);
   const workspaces = useWorkspaces((state) => state.items);
   const [query, setQuery] = (0, import_react.useState)("");
   const [collapsed, setCollapsed] = (0, import_react.useState)(/* @__PURE__ */ new Set());
-  const [busy, setBusy] = (0, import_react.useState)(null);
-  const [restoredIds, setRestoredIds] = (0, import_react.useState)([]);
-  const [deletedIds, setDeletedIds] = (0, import_react.useState)([]);
-  const [confirmingDelete, setConfirmingDelete] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)(void 0);
   const [previewing, setPreviewing] = (0, import_react.useState)(null);
   const [previewLoading, setPreviewLoading] = (0, import_react.useState)(false);
   const [previewData, setPreviewData] = (0, import_react.useState)(void 0);
@@ -293,18 +246,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
   if (groups.length === 0) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "dsa-empty", children: t("empty") });
   }
-  const restore = (id) => {
-    setBusy(id);
-    setError(void 0);
-    void postAction("restore", id).then((result) => {
-      setBusy(null);
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
-      }
-      setRestoredIds((ids) => ids.includes(id) ? ids : [...ids, id]);
-    });
-  };
   const openPreview = (id, title) => {
     setPreviewing({ id, title });
     setPreviewLoading(true);
@@ -317,21 +258,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
         return;
       }
       setPreviewData(result.preview);
-    });
-  };
-  const deleteSession = (id) => {
-    setConfirmingDelete(null);
-    setBusy(id);
-    setError(void 0);
-    void postAction("delete", id).then((result) => {
-      setBusy(null);
-      if (!result.ok) {
-        const message = result.error.code === "delete-live" ? t("deleteLiveError") : t("deleteFailed");
-        setError(message);
-        return;
-      }
-      setDeletedIds((ids) => ids.includes(id) ? ids : [...ids, id]);
-      void refresh();
     });
   };
   const toggleGroup = (key) => {
@@ -347,13 +273,7 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
     ...group,
     sessions: group.sessions.filter(({ title }) => matchesTitle(title, q))
   })).filter((group) => group.sessions.length > 0);
-  const confirmTarget = confirmingDelete === null ? void 0 : visible.flatMap((group) => group.sessions).find(({ summary }) => summary.id === confirmingDelete);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsa-body", children: [
-    error === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsa-error", children: [
-      t("failed"),
-      ": ",
-      error
-    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       import_dsh_client_ui_primitives.Input,
       {
@@ -367,7 +287,7 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
     ),
     visible.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "dsa-empty", children: t("searchEmpty") }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dsa-groups", children: visible.map((group) => {
       const isCollapsed = collapsed.has(group.key);
-      const groupSessions = group.sessions.filter(({ summary }) => !deletedIds.includes(summary.id));
+      const groupSessions = group.sessions;
       if (groupSessions.length === 0) return null;
       return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "dsa-group", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -392,16 +312,8 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
           {
             title,
             updatedAt,
-            busy: busy === summary.id,
-            restored: restoredIds.includes(summary.id),
             onPreview: () => {
               openPreview(summary.id, title);
-            },
-            onRestore: () => {
-              restore(summary.id);
-            },
-            onDeleteRequest: () => {
-              setConfirmingDelete(summary.id);
             },
             t
           },
@@ -409,39 +321,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }) {
         )) }) : null
       ] }, group.key);
     }) }),
-    confirmTarget === void 0 || confirmingDelete === null ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      import_dsh_client_ui_primitives.Modal,
-      {
-        open: true,
-        className: "dsa-delete-modal",
-        onClose: () => {
-          setConfirmingDelete(null);
-        },
-        title: t("deleteTitle"),
-        closeLabel: t("close"),
-        footer: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Button, { variant: "outline", onClick: () => {
-            setConfirmingDelete(null);
-          }, children: t("close") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            import_dsh_client_ui_primitives.Button,
-            {
-              variant: "primary",
-              className: "dsa-delete-confirm",
-              disabled: busy === confirmingDelete,
-              onClick: () => {
-                deleteSession(confirmingDelete);
-              },
-              children: busy === confirmingDelete ? t("deleting") : t("deleteConfirm")
-            }
-          )
-        ] }),
-        children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dsa-delete-warning", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: confirmTarget.title }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: t("deleteWarning") })
-        ] })
-      }
-    ),
     previewing === null ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       PreviewModal,
       {
@@ -464,7 +343,7 @@ function ArchiveIcon() {
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M6.5 9h3" })
   ] });
 }
-function FooterEntry({ useWorkspaces, useSessions, refresh, t, wide, ...rest }) {
+function FooterEntry({ useWorkspaces, useSessions, t, wide, ...rest }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const narrow = wide === false;
   const translate = t ?? ((key) => en[key]);
@@ -495,7 +374,7 @@ function FooterEntry({ useWorkspaces, useSessions, refresh, t, wide, ...rest }) 
         title: translate("title"),
         closeLabel: translate("close"),
         description: translate("intro"),
-        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PanelBody, { useWorkspaces, useSessions, refresh, t: translate })
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PanelBody, { useWorkspaces, useSessions, t: translate })
       }
     ) : null
   ] });
@@ -526,7 +405,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-groups{display:grid;gap:14px}
 .dsa-group{display:grid;gap:6px}
 .dsa-group-head{display:flex;align-items:center;gap:7px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%}
-.dsa-group-head:focus-visible{outline:2px solid #7c6ff0;outline-offset:-2px;border-radius:6px}
+.dsa-group-head:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;border-radius:6px}
 .dsa-chevron{color:var(--dsw-alias-label-tertiary);font-size:10px;flex:none;transition:transform .14s ease}
 .dsa-chevron[data-open]{transform:rotate(90deg)}
 .dsa-group-head strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -534,22 +413,11 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-group-count{margin-left:auto;flex:none;font-size:10px;padding:2px 7px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
 .dsa-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .dsa-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
-.dsa-row[data-restored]{opacity:.55}
-.dsa-row-main{min-width:0;flex:1;display:grid;gap:2px}
-.dsa-row-main strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsa-delete-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .12s ease,color .12s ease}
-.dsa-delete-btn:hover:not(:disabled){background:rgba(205,72,72,.1);color:#c34f4f}
-.dsa-delete-btn:focus-visible{outline:2px solid #cf5050;outline-offset:-1px}
-.dsa-delete-btn:disabled{opacity:.4;cursor:default}
-.dsa-delete-modal{width:min(420px,90vw)!important}
-.dsa-delete-warning{display:grid;gap:8px;padding:2px 0 4px}
-.dsa-delete-warning p{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-tertiary)}
-.dsa-delete-warning strong{display:block;margin-bottom:4px;font-size:13px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsa-delete-confirm{background:#cf5050!important;border-color:#cf5050!important}
 .dsa-row-main{min-width:0;flex:1;display:grid;gap:2px;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dsa-row-main strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-row-time{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums;cursor:default}
-.dsa-row-main:hover strong{color:#6659c7}
-.dsa-row-main:focus-visible{outline:2px solid #7c6ff0;outline-offset:-2px;border-radius:6px}
+.dsa-row-main:hover strong{color:var(--dsw-alias-label-primary)}
+.dsa-row-main:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;border-radius:6px}
 .dsa-row-main:disabled{cursor:default}
 .dsa-preview-modal{width:min(540px,90vw)!important;height:min(480px,75vh)!important;display:flex!important;flex-direction:column}
 .dsa-preview-content{display:flex!important;flex-direction:column;flex:1;min-height:0}
@@ -559,7 +427,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-preview-head strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-preview-head code{font-size:10px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsa-preview-count{margin-left:auto;flex:none;font-size:10px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
-.dsa-preview-note{margin:0;padding:6px 10px;border-radius:8px;background:rgba(92,108,213,.08);color:#5149a6;font-size:11px;line-height:1.5}
+.dsa-preview-note{margin:0;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .dsa-preview-empty{margin:0;padding:12px 2px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .dsa-questions{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .dsa-question{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
@@ -586,21 +454,13 @@ function apply(ctx) {
   ctx.effect(installStyles, "@kiligzzz/dsh-session-archive: styles");
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), "@kiligzzz/dsh-session-archive: locale");
   const t = ctx.locale.bind(NS);
-  const refresh = async () => {
-    const workspaces = ctx.get("workspaces");
-    const sessions = ctx.get("sessions");
-    await Promise.allSettled([
-      workspaces?.refresh?.(),
-      sessions?.refresh?.()
-    ]);
-  };
   ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
     name: "sidebar.footer.action",
     id: "session-archive",
     // 排在插件市场（community-market order=10）上方、Cordis 面板（默认 order=0）下方。
     order: 5,
     label: () => t("nav"),
-    inject: () => ({ t, refresh })
+    inject: () => ({ t })
   }, FooterEntry));
 }
 

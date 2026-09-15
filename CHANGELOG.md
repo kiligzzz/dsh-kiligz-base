@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Add MCP OAuth login, shared issuer/resource credentials, automatic token refresh, and login/logout status controls to Skill MCP Manager while preserving session-scoped lazy loading.
 - Replace `dsh-vision-router` with `@goodandready/dsh-vision-bridge` (pinned GitHub commit) and drop the generated Vision Router client-boundary prelude.
 - Drop the Bridge composer controls entirely: vision stays on the configured `hybrid` mode, so neither a mode toggle nor a PDF button is added next to the message input. The PDF drop/paste path remains available.
 - Match the auto-continue and Vision Bridge cards in Settings → Plugins to the native PluginCard metrics, and drop the auto-continue card's decorative relay mark, journey strip, and repository promo block.

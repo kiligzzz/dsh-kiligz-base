@@ -1,12 +1,11 @@
-# One Profile bundle and one Loader row. The base plugin mounts the seven
-# feature implementations as child Cordis fibers so their service injections
-# and disposal semantics remain intact without exposing seven bundle rows.
+# One Profile bundle and one Loader row. The base plugin mounts five feature
+# implementations as child Cordis fibers so their service injections and
+# disposal semantics remain intact without exposing separate bundle rows.
 - insert:
     - id: dsh-kiligz-base
       name: '@kiligzzz/dsh-kiligz-base'
       config:
         automation:
-          maxConcurrentRuns: 2
           runTimeoutMinutes: 60
           misfireGraceMinutes: 15
           historyLimit: 200

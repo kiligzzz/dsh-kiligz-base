@@ -26,6 +26,7 @@ window.__ModuleLoader__.load({
       ".cm-item-desc{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}" +
       ".cm-src{color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.4;word-break:break-all}" +
       ".cm-toolbox{margin-top:2px;border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:4px 8px;background:var(--dsw-alias-bg-layer-2)}" +
+      ".cm-oauth-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed var(--dsw-alias-border-l1)}" +
       ".cm-toolrow{position:relative;display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--dsw-alias-border-l1)}" +
       ".cm-toolrow:last-child{border-bottom:none}" +
       ".cm-toolname{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--dsw-alias-label-primary);flex:none;min-width:130px}" +
@@ -73,8 +74,9 @@ window.__ModuleLoader__.load({
     }
 
     // ── REST API（skill-mcp-manager-host 提供）──
-    async function apiGet() {
-      const r = await fetch("/capabilities-api");
+    async function apiGet(sessionId) {
+      const query = sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "";
+      const r = await fetch("/capabilities-api" + query);
       const d = await r.json();
       if (!d || d.ok !== true) throw new Error((d && d.error) || "请求失败");
       return d;
@@ -128,7 +130,7 @@ window.__ModuleLoader__.load({
     }
 
     // ── Skill 管理页 ──
-    function SkillPage() {
+    function SkillPage({ sessionId }) {
       const [data, setData] = React.useState(null);
       const [search, setSearch] = React.useState("");
       const [syncSource, setSyncSource] = React.useState("");
@@ -137,17 +139,17 @@ window.__ModuleLoader__.load({
       const [err, setErr] = React.useState("");
       const fileRef = React.useRef(null);
 
-      const refresh = () => apiGet().then(setData).catch((e) => setErr(msg(e)));
-      React.useEffect(() => { refresh(); }, []);
+      const refresh = () => apiGet(sessionId).then(setData).catch((e) => setErr(msg(e)));
+      React.useEffect(() => { refresh(); }, [sessionId]);
 
       const toggle = (name, enabled) =>
-        apiPost("/capabilities-api/skill/toggle", { name, enabled }).then(refresh).catch((e) => setErr(msg(e)));
+        apiPost("/capabilities-api/skill/toggle", { name, enabled, sessionId }).then(refresh).catch((e) => setErr(msg(e)));
       const openEdit = (name) =>
-        apiPost("/capabilities-api/skill/open", { name }).catch((e) => setErr(msg(e)));
+        apiPost("/capabilities-api/skill/open", { name, sessionId }).catch((e) => setErr(msg(e)));
       const doDelete = () => {
         const item = confirmDel;
         setConfirmDel(null);
-        apiPost("/capabilities-api/skill/delete", { name: item.name }).then(refresh).catch((e) => setErr(msg(e)));
+        apiPost("/capabilities-api/skill/delete", { name: item.name, sessionId }).then(refresh).catch((e) => setErr(msg(e)));
       };
       const onFile = (e) => {
         const f = e.target.files && e.target.files[0];
@@ -174,17 +176,18 @@ window.__ModuleLoader__.load({
           .catch((x) => { setSyncMsg(""); setErr(msg(x)); });
       };
 
-      const all = data ? data.skills.user : [];
+      const all = data ? data.skills.catalog : [];
       const q = search.trim().toLowerCase();
       const items = q ? all.filter((s) => s.name.toLowerCase().includes(q) || String(s.description || "").toLowerCase().includes(q)) : all;
       const rows = items.map((s) =>
         React.createElement("div", { key: s.name, className: "cm-item" },
           React.createElement("div", { className: "cm-item-row" },
             React.createElement("span", { className: "cm-item-name", title: s.name }, s.name),
+            React.createElement("span", { className: "cm-badge", title: s.resourceBase || s.source }, s.sourceLabel || s.source),
             s.synced ? React.createElement("span", { className: "cm-badge link", title: s.syncedSource ? "软链自 " + s.syncedSource : "软链" }, "同步") : null,
-            React.createElement("button", { className: "cm-ico", title: "用系统编辑器打开", onClick: () => openEdit(s.name) }, "✎"),
-            React.createElement("button", { className: "cm-ico danger", title: "删除", onClick: () => setConfirmDel(s) }, "🗑"),
-            React.createElement(Switch, { on: s.enabled, onChange: (v) => toggle(s.name, v) }),
+            s.editable ? React.createElement("button", { className: "cm-ico", title: "用系统编辑器打开", onClick: () => openEdit(s.name) }, "✎") : null,
+            s.editable ? React.createElement("button", { className: "cm-ico danger", title: "删除", onClick: () => setConfirmDel(s) }, "🗑") : null,
+            s.editable ? React.createElement(Switch, { on: s.enabled, onChange: (v) => toggle(s.name, v) }) : null,
           ),
           s.description ? React.createElement("div", { className: "cm-item-desc" }, s.description) : null,
           s.synced && s.syncedSource ? React.createElement("div", { className: "cm-src" }, "来源: " + s.syncedSource) : null,
@@ -201,7 +204,7 @@ window.__ModuleLoader__.load({
         React.createElement("div", { className: "cm-head" },
           React.createElement("div", null,
             React.createElement("div", { className: "cm-title" }, "DSH Skill MCP Manager"),
-            React.createElement("div", { className: "cm-sub" }, "统一管理 skill（目录 ~/.dsh/skills）"),
+            React.createElement("div", { className: "cm-sub" }, "当前会话的官方 Skill 目录；仅 ~/.dsh/skills 条目可修改"),
           ),
           React.createElement("button", { className: "cm-btn primary", onClick: () => fileRef.current && fileRef.current.click() }, "+ 导入 Skill"),
         ),
@@ -236,17 +239,21 @@ window.__ModuleLoader__.load({
       const [expanded, setExpanded] = React.useState(null);
       const [form, setForm] = React.useState(null);
       const [confirmDel, setConfirmDel] = React.useState(null);
+      const [confirmLogout, setConfirmLogout] = React.useState(null);
+      const [oauthBusy, setOauthBusy] = React.useState({});
+      const [oauthLinks, setOauthLinks] = React.useState({});
       const [err, setErr] = React.useState("");
 
       const refresh = () => apiGet().then(setData).catch((e) => setErr(msg(e)));
       React.useEffect(() => { refresh(); }, []);
 
-      const emptyForm = () => ({ name: "", transport: "stdio", command: "npx", args: "", env: "", url: "", headers: "", description: "", enabled: true });
+      const emptyForm = () => ({ name: "", transport: "stdio", command: "npx", args: "", env: "", url: "", headers: "", authType: "none", description: "", enabled: true });
       const findServer = (name) => data && data.mcp.servers.find((s) => s.name === name);
       const openEdit = (s) => setForm({
         name: s.name, transport: s.transport,
         command: s.command || "", args: (s.args || []).join(", "),
         env: envText(s.env), url: s.url || "", headers: headersText(s.headers),
+        authType: s.auth && s.auth.type === "oauth" ? "oauth" : "none",
         description: s.description || "", enabled: !!s.enabled,
       });
       const toggle = (name, enabled) =>
@@ -258,6 +265,7 @@ window.__ModuleLoader__.load({
           name: s.name.trim(), transport: s.transport, command: s.command.trim(),
           args: s.args.split(",").map((x) => x.trim()).filter(Boolean),
           env: parseKv(s.env, "="), url: s.url.trim(), headers: parseKv(s.headers, ":"),
+          auth: s.authType === "oauth" ? { type: "oauth" } : null,
           description: s.description.trim(), enabled: s.enabled,
         };
         apiPost("/capabilities-api/mcp/save", { server }).then(() => { setForm(null); refresh(); }).catch((e) => setErr(msg(e)));
@@ -285,6 +293,55 @@ window.__ModuleLoader__.load({
           .catch((e) => setErr(msg(e)))
           .finally(() => setRefreshing((current) => Object.assign({}, current, { [name]: false })));
       };
+      const startOauth = (name) => {
+        setErr("");
+        const popup = window.open("about:blank", "_blank");
+        if (popup) popup.opener = null;
+        setOauthBusy((current) => Object.assign({}, current, { [name]: Date.now() }));
+        apiPost("/capabilities-api/mcp/oauth/login", { name }).then((result) => {
+          if (result.authorized) {
+            if (popup) popup.close();
+            setOauthBusy((current) => { const next = Object.assign({}, current); delete next[name]; return next; });
+            return refreshOne(name);
+          }
+          if (!result.url) throw new Error("OAuth 登录未返回授权地址");
+          if (popup) popup.location.href = result.url;
+          else setOauthLinks((current) => Object.assign({}, current, { [name]: result.url }));
+        }).catch((e) => {
+          if (popup) popup.close();
+          setOauthBusy((current) => { const next = Object.assign({}, current); delete next[name]; return next; });
+          setErr(msg(e));
+        });
+      };
+      const doOauthLogout = () => {
+        const name = confirmLogout;
+        setConfirmLogout(null);
+        apiPost("/capabilities-api/mcp/oauth/logout", { name }).then(refresh).catch((e) => setErr(msg(e)));
+      };
+      React.useEffect(() => {
+        const names = Object.keys(oauthBusy);
+        if (!names.length) return undefined;
+        const timer = setInterval(() => {
+          apiGet().then((next) => {
+            setData(next);
+            setOauthBusy((current) => {
+              const updated = Object.assign({}, current);
+              for (const name of Object.keys(updated)) {
+                const server = next.mcp.servers.find((item) => item.name === name);
+                if (server && server.oauth && server.oauth.state === "authorized") {
+                  delete updated[name];
+                  setOauthLinks((links) => { const nextLinks = Object.assign({}, links); delete nextLinks[name]; return nextLinks; });
+                } else if (Date.now() - updated[name] > 10 * 60 * 1000) {
+                  delete updated[name];
+                  setErr("OAuth 登录已超时，请重新认证");
+                }
+              }
+              return updated;
+            });
+          }).catch((e) => setErr(msg(e)));
+        }, 1500);
+        return () => clearInterval(timer);
+      }, [Object.keys(oauthBusy).sort().join("|")]);
       const openConfig = () => apiPost("/capabilities-api/mcp/open-config", {}).catch((e) => setErr(msg(e)));
       const copyLog = (text) => { try { navigator.clipboard.writeText(text); } catch (e) { /* ignore */ } };
 
@@ -307,6 +364,9 @@ window.__ModuleLoader__.load({
         const dot = st.state === "available" ? "on" : (st.state === "error" ? "err" : "off");
         const toolList = Array.isArray(s.tools) ? s.tools : [];
         const catalog = s.catalog || {};
+        const isOauth = !!(s.auth && s.auth.type === "oauth");
+        const oauth = s.oauth || { state: "none" };
+        const oauthLabel = oauth.state === "authorized" ? "已认证" : (oauth.state === "expired" ? "已过期" : (oauth.state === "error" ? "认证异常" : "未认证"));
         const countLabel = toolList.length ? String(toolList.length) + " tools" : (catalog.updatedAt ? "0 tools" : "工具未获取");
         const scopeLabel = (st.scope === "session" && s.enabled ? "按需加载 · " : "") + countLabel;
         return React.createElement("div", { key: s.name, className: "cm-item" },
@@ -314,6 +374,7 @@ window.__ModuleLoader__.load({
             React.createElement("button", { className: "cm-ico", onClick: () => setExpanded(expanded === s.name ? null : s.name), title: toolList.length ? "展开工具列表" : "展开" }, expanded === s.name ? "▾" : "▸"),
             React.createElement("span", { className: "cm-item-name", title: s.name }, s.name),
             React.createElement("span", { className: "cm-badge" }, "用户"),
+            isOauth ? React.createElement("span", { className: "cm-badge", title: oauthLabel }, "OAuth") : null,
             React.createElement("span", { className: "cm-dot " + dot, title: st.state }),
             React.createElement("span", { className: "cm-tools" }, scopeLabel),
             React.createElement("button", { className: "cm-ico", title: "编辑", onClick: () => openEdit(s) }, "✎"),
@@ -330,6 +391,13 @@ window.__ModuleLoader__.load({
             ) : null,
           expanded === s.name ?
             React.createElement("div", { className: "cm-toolbox" },
+              isOauth ? React.createElement("div", { className: "cm-oauth-row" },
+                React.createElement("span", { className: "cm-src" }, "OAuth：" + oauthLabel),
+                oauthLinks[s.name] ? React.createElement("a", { className: "cm-btn", href: oauthLinks[s.name], target: "_blank", rel: "noopener noreferrer" }, "打开登录页") : null,
+                oauth.state === "authorized"
+                  ? React.createElement("button", { className: "cm-btn", onClick: () => setConfirmLogout(s.name) }, "退出")
+                  : React.createElement("button", { className: "cm-btn", disabled: !!oauthBusy[s.name], onClick: () => startOauth(s.name) }, oauthBusy[s.name] ? "等待授权…" : "登录"),
+              ) : null,
               catalog.updatedAt ? React.createElement("div", { className: "cm-src" }, "更新于 " + new Date(catalog.updatedAt).toLocaleString()) : null,
               catalog.error ? React.createElement("div", { className: "cm-err" }, catalog.error) : null,
               toolList.length
@@ -380,7 +448,14 @@ window.__ModuleLoader__.load({
               React.createElement("input", { className: "cm-input", value: form.url, onChange: (e) => setForm(Object.assign({}, form, { url: e.target.value })) }),
             ),
             React.createElement("div", { className: "cm-field" },
-              React.createElement("span", { className: "cm-label" }, "请求头 (每行 Name: value，如 Authorization: Bearer xxx)"),
+              React.createElement("span", { className: "cm-label" }, "认证"),
+              React.createElement("select", { className: "cm-select", value: form.authType, onChange: (e) => setForm(Object.assign({}, form, { authType: e.target.value })) },
+                React.createElement("option", { value: "none" }, "无 / 自定义请求头"),
+                React.createElement("option", { value: "oauth" }, "OAuth（浏览器登录并自动刷新）"),
+              ),
+            ),
+            React.createElement("div", { className: "cm-field" },
+              React.createElement("span", { className: "cm-label" }, form.authType === "oauth" ? "附加请求头 (OAuth 会覆盖 Authorization)" : "请求头 (每行 Name: value，如 Authorization: Bearer xxx)"),
               React.createElement("textarea", { className: "cm-textarea", value: form.headers, onChange: (e) => setForm(Object.assign({}, form, { headers: e.target.value })) }),
             ),
           ),
@@ -421,6 +496,13 @@ window.__ModuleLoader__.load({
           confirmText: "删除",
           onConfirm: doDelete,
           onCancel: () => setConfirmDel(null),
+        }) : null,
+        confirmLogout ? React.createElement(ConfirmModal, {
+          title: "退出 OAuth",
+          message: "确定退出「" + confirmLogout + "」的 OAuth 吗？共享同一认证资源的 MCP 会同时退出。",
+          confirmText: "退出",
+          onConfirm: doOauthLogout,
+          onCancel: () => setConfirmLogout(null),
         }) : null,
       );
     }

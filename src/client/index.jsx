@@ -91,7 +91,7 @@ function AutomationPanel({ panel, rpc, t, permissionT, modelT, onClose }) {
   })
 }
 
-function SkillPanel({ panel, t }) {
+function SkillPanel({ panel, t, sessionId }) {
   const [error, setError] = React.useState('')
   const openDirectory = () => {
     setError('')
@@ -110,11 +110,11 @@ function SkillPanel({ panel, t }) {
       }, React.createElement(IconFolderOpenOutline16, { size: 16 })),
     ),
     error.length > 0 ? React.createElement('p', { className: 'kb-inline-error', role: 'alert' }, error) : null,
-    React.createElement(panel.SkillPage),
+    React.createElement(panel.SkillPage, { sessionId }),
   )
 }
 
-function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t, onClose }) {
+function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t, onClose, sessionId }) {
   if (entryId === 'automation' && panels.automation !== undefined) {
     return React.createElement(AutomationPanel, {
       panel: panels.automation,
@@ -126,7 +126,7 @@ function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t
     })
   }
   if (entryId === 'skill' && panels.skillMcp !== undefined) {
-    return React.createElement(SkillPanel, { panel: panels.skillMcp, t })
+    return React.createElement(SkillPanel, { panel: panels.skillMcp, t, sessionId })
   }
   if (entryId === 'mcp' && panels.skillMcp !== undefined) {
     return React.createElement(panels.skillMcp.McpPage)
@@ -134,7 +134,8 @@ function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t
   return React.createElement('p', { className: 'kb-inline-error', role: 'alert' }, t('actionFailed'))
 }
 
-function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissionT, modelT, t }) {
+function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissionT, modelT, t, useSessions }) {
+  const sessionId = useSessions((snapshot) => snapshot.current)
   const entry = ENTRY_DEFINITIONS.find((candidate) => candidate.id === entryId) ?? ENTRY_DEFINITIONS[0]
   const [open, setOpen] = React.useState(false)
   const triggerRef = React.useRef(null)
@@ -174,6 +175,7 @@ function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissio
         modelT,
         t,
         onClose: close,
+        sessionId,
       }),
     )) : null,
   )

@@ -1,23 +1,11 @@
 /**
- * @kiligzzz/dsh-session-archive — surface, restore, and delete the
- * registry-global archived-session set.
+ * @kiligzzz/dsh-session-archive — read-only archived Session browser.
  *
- * The harness workspace registry keeps an `archivedSessionIds` list that hides
- * sessions from every grouping surface but ships no way to view, unarchive, or
- * delete them. This plugin adds that missing capability:
- *   - `workspaceArchive.list()` returns the archived ids in host order,
- *   - `workspaceArchive.restore(sessionId)` removes one id from the durable
- *     archived set (idempotent, serialized through the registry write chain),
- *   - `workspaceArchive.deleteSession(sessionId)` additionally detaches the
- *     session from its workspace accounting and removes its on-disk log,
- *   - a same-origin HTTP route `/_dsh/session-archive` lets the Web bundle
- *     read, restore, and delete.
- * @module @kiligzzz/dsh-session-archive
+ * DSH 0.1.5-rc.2 exposes archiveSession but no public inverse or coordinated
+ * permanent-delete API. This plugin therefore consumes only public read
+ * contracts: archivedSessionIds and read-only session persistence handles.
  */
 
-import { rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from 'cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -28,62 +16,11 @@ export const ROUTE = '/_dsh/session-archive'
 /** Stable Cordis plugin name. */
 export const name = '@kiligzzz/dsh-session-archive'
 
-/** Services required before restore/delete can be called. */
-export const inject = ['workspaceRegistry', 'sessions', 'sessionPersistence']
+/** Public services required by the read-only surface. */
+export const inject = ['workspaceRegistry', 'sessionPersistence']
 
 const MAX_BODY = 64 * 1024
-
-/**
- * Session log root: the `sessions` directory under the harness home. Mirrors
- * `dsh-home-paths.defaultDshHome()` (`~/.dsh`, honouring `DSH_HOME`) so the
- * bundle needs no external package at runtime.
- */
-function sessionRoot(): string {
-  const home = process.env.DSH_HOME?.length > 0 ? process.env.DSH_HOME : join(homedir(), '.dsh')
-  return join(home, 'sessions')
-}
-
-/** Mirror the jsonl backend's project-key encoding for a cwd path. */
-function projectKey(cwd: string): string {
-  if (cwd.length === 0) throw new Error('cannot encode an empty project path')
-  let readable = ''
-  let separatorRun = false
-  for (let i = 0; i < cwd.length; i++) {
-    const code = cwd.charCodeAt(i)
-    const ch = String.fromCharCode(code)
-    if (ch === '/' || ch === '\\' || ch === ':') {
-      if (!separatorRun) readable += '-'
-      separatorRun = true
-    } else if (ch !== '~' && /^[A-Za-z0-9._-]$/.test(ch)) {
-      readable += ch
-      separatorRun = false
-    } else {
-      readable += `~${code.toString(16).toUpperCase().padStart(4, '0')}`
-      separatorRun = false
-    }
-  }
-  return `--${(readable.replace(/^-+/, '') || 'root').slice(0, 251)}--`
-}
-
-/** Mirror the jsonl backend's segment encoding for a session id. */
-function encodeSegment(raw: string): string {
-  if (raw.length === 0) throw new Error('cannot encode an empty path segment')
-  if (raw === '.') return '~002E'
-  if (raw === '..') return '~002E~002E'
-  let out = ''
-  for (let i = 0; i < raw.length; i++) {
-    const code = raw.charCodeAt(i)
-    const ch = String.fromCharCode(code)
-    if (ch !== '~' && /^[A-Za-z0-9._-]$/.test(ch)) out += ch
-    else out += `~${code.toString(16).toUpperCase().padStart(4, '0')}`
-  }
-  return out
-}
-
-/** Absolute on-disk session directory for a cwd + id. */
-function sessionDirectory(cwd: string, sessionId: string): string {
-  return join(sessionRoot(), projectKey(cwd), encodeSegment(sessionId))
-}
+const QUESTION_LIMIT = 100
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -101,7 +38,7 @@ function responseJson(res: ServerResponse, status: number, body: unknown): void 
   res.end(bytes)
 }
 
-/** Mirror the no-CSRF posture used by the vision-toolkit web backend. */
+/** Reject cross-origin mutation-shaped requests even though this route is read-only. */
 function sameOriginPost(req: IncomingMessage): boolean {
   const fetchSite = req.headers['sec-fetch-site']
   if (fetchSite === 'cross-site') return false
@@ -133,46 +70,27 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
-/** Plain plugin message (no harness objects leak into the JSON contract). */
 function publicMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/**
- * The harness-facing face this plugin needs from the workspace registry.
- * `enqueueOperation`/`requireState`/`setState` are the registry's public
- * serialized write chain (mirroring `archiveSession`); `list()` yields the
- * live workspace entities used to detach accounting.
- */
 interface RegistryFace {
-  enqueueOperation(operation: () => Promise<unknown>): Promise<unknown>
-  requireState(): { archivedSessionIds: string[] }
-  setState(state: unknown): Promise<void>
-  list(): WorkspaceEntityFace[]
+  readonly archivedSessionIds: readonly string[]
 }
 
-interface WorkspaceEntityFace {
-  path: string
-  sessionIds: string[]
-  detachSession(sessionId: string): Promise<void>
-}
-
-/** Minimal face of `ctx.sessionPersistence` for cwd lookup and log reads. */
 interface SessionPersistenceFace {
-  stat(id: string, options?: { signal?: AbortSignal }): Promise<{
-    header: { cwd?: string }
-  } | undefined>
   open(id: string, access: 'read', options?: { signal?: AbortSignal }): Promise<SessionReadHandle>
 }
 
-/** Read-only session handle used by the current persistence API. */
 interface SessionReadHandle {
-  header: { id: string; cwd?: string }
-  read(offset?: number, length?: number, options?: { signal?: AbortSignal }): Promise<readonly SessionLogEvent[]>
+  readonly header: { id: string; cwd?: string }
+  read(offset?: number, length?: number, options?: { signal?: AbortSignal }): Promise<{
+    eventState: string
+    events: readonly SessionLogEvent[]
+  }>
   close(): Promise<void>
 }
 
-/** Minimal session-log event shape extracted for preview. */
 interface SessionLogEvent {
   seq: number
   type: string
@@ -180,7 +98,6 @@ interface SessionLogEvent {
   time?: number
 }
 
-/** Extract a plain-text line from a message-content block. */
 function blockText(block: unknown): string | undefined {
   if (typeof block !== 'object' || block === null) return undefined
   const record = block as Record<string, unknown>
@@ -189,14 +106,13 @@ function blockText(block: unknown): string | undefined {
   return undefined
 }
 
-/** Flatten either a raw string or a block array into non-empty text lines. */
 function contentLines(value: unknown, limit = 8): string[] {
   const lines: string[] = []
   const push = (text: unknown, cap = 300): void => {
     if (typeof text !== 'string') return
-    const t = text.trim()
-    if (t.length === 0) return
-    lines.push(t.length > cap ? `${t.slice(0, cap)}…` : t)
+    const normalized = text.trim()
+    if (normalized.length === 0) return
+    lines.push(normalized.length > cap ? `${normalized.slice(0, cap)}…` : normalized)
   }
   if (Array.isArray(value)) {
     for (const block of value) push(blockText(block))
@@ -206,65 +122,51 @@ function contentLines(value: unknown, limit = 8): string[] {
   return lines.slice(0, limit)
 }
 
-/**
- * Host service exposing the archived-session set, durable restore, and durable
- * deletion to other host plugins and to the Web backend.
- */
+/** Read-only façade over the registry-global archived-session set. */
 export class WorkspaceArchive {
   constructor(
     private readonly registry: RegistryFace,
-    private readonly sessions: { get(id: string): unknown },
     private readonly persistence: SessionPersistenceFace,
   ) {}
 
-  /** Archived ids in host order. */
+  /** Archived ids in host order. The clone prevents callers mutating registry state. */
   list(): string[] {
-    return this.registry.requireState().archivedSessionIds
+    return [...this.registry.archivedSessionIds]
   }
 
-  /**
-   * Read a read-only preview of a session's log: metadata plus every user
-   * question rendered as plain text (newest first). Purely observational —
-   * never mutates the archived set or workspace accounting, so the user can
-   * inspect the questions before deciding to restore or delete.
-   * @param sessionId - session to preview.
-   * @returns metadata and the user-question list.
-   */
+  /** Read one archived Session preview through the public persistence handle. */
   async preview(sessionId: string): Promise<{
     title: string | undefined
     cwd: string | undefined
-    questions: Array<{
-      seq: number
-      text: string[]
-    }>
+    questions: Array<{ seq: number; text: string[] }>
   }> {
     if (typeof sessionId !== 'string' || sessionId.length === 0) throw new TypeError('sessionId must be a non-empty string')
+    if (!this.registry.archivedSessionIds.includes(sessionId)) {
+      const error = new Error('session is not archived') as Error & { code?: string }
+      error.code = 'not-archived'
+      throw error
+    }
+
     const handle = await this.persistence.open(sessionId, 'read')
-    const meta = handle.header
     let events: readonly SessionLogEvent[]
     try {
-      events = await handle.read()
+      ;({ events } = await handle.read())
     } finally {
       await handle.close()
     }
-    // Title lives in the last session/title event when present.
+
     let title: string | undefined
     for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === 'session/title') {
-        const data = events[i].data ?? {}
-        if (typeof data.title === 'string' && data.title.length > 0) {
-          title = data.title
-          break
-        }
+      const event = events[i]
+      if (event.type !== 'session/title') continue
+      const data = event.data ?? {}
+      if (typeof data.title === 'string' && data.title.length > 0) {
+        title = data.title
+        break
       }
     }
-    // Collect every genuine user question (newest first), capping the count so
-    // even a very long session stays a bounded payload. System-injected
-    // user-role messages (agent presets, skill reminders, plugin/workspace
-    // context) carry a non-"user" source.kind and are skipped — mirroring the
-    // official conversation renderer's `source.kind !== "user"` classification.
+
     const questions: Array<{ seq: number; text: string[] }> = []
-    const QUESTION_LIMIT = 100
     for (let i = events.length - 1; i >= 0 && questions.length < QUESTION_LIMIT; i--) {
       const event = events[i]
       if (event.type !== 'user/message') continue
@@ -272,114 +174,21 @@ export class WorkspaceArchive {
       const source = isRecord(data.source) ? data.source : undefined
       const sourceKind = typeof source?.kind === 'string' ? source.kind : 'user'
       if (sourceKind !== 'user') continue
-      questions.unshift({ seq: event.seq, text: contentLines(data.content) })
+      const text = contentLines(data.content)
+      if (text.length > 0) questions.push({ seq: event.seq, text })
     }
+
     return {
       title,
-      cwd: typeof meta.cwd === 'string' ? meta.cwd : undefined,
+      cwd: typeof handle.header.cwd === 'string' ? handle.header.cwd : undefined,
       questions,
     }
   }
-
-  /**
-   * Remove one session from the durable archived set. Idempotent: an id that
-   * is not archived resolves without writing. Serialized through the registry
-   * write chain so it cannot interleave with an in-flight archive.
-   * @param sessionId - session to restore.
-   */
-  async restore(sessionId: string): Promise<boolean> {
-    if (typeof sessionId !== 'string' || sessionId.length === 0) throw new TypeError('sessionId must be a non-empty string')
-    return this.registry.enqueueOperation(async () => {
-      const state = this.registry.requireState()
-      const archived = state.archivedSessionIds
-      if (!archived.includes(sessionId)) return false
-      await this.registry.setState({
-        ...state,
-        archivedSessionIds: archived.filter((id) => id !== sessionId),
-      })
-      return true
-    }) as Promise<boolean>
-  }
-
-  /**
-   * Permanently delete an archived session: unarchive it, detach its workspace
-   * accounting, and remove its on-disk log directory. Refuses live sessions.
-   * @param sessionId - session to delete.
-   * @returns a summary of what was removed.
-   */
-  async deleteSession(sessionId: string): Promise<{
-    archived: boolean
-    detached: boolean
-    removed: boolean
-    path?: string | undefined
-  }> {
-    if (typeof sessionId !== 'string' || sessionId.length === 0) throw new TypeError('sessionId must be a non-empty string')
-    if (this.sessions.get(sessionId) !== undefined) {
-      // Distinct error code so the client can render a friendly localized
-      // message ("the session is still open") instead of this raw English
-      // guard message.
-      const error = new Error(`cannot delete live session '${sessionId}'`) as Error & { code?: string }
-      error.code = 'delete-live'
-      throw error
-    }
-
-    // Find the owning workspace (if any) for cwd + detach. The entity's
-    // `sessionIds` getter filters by canonical cwd; fall back to the raw
-    // archived membership so archived sessions still resolve.
-    let workspace: WorkspaceEntityFace | undefined
-    for (const candidate of this.registry.list()) {
-      if (candidate.sessionIds.includes(sessionId)) {
-        workspace = candidate
-        break
-      }
-    }
-
-    let cwd: string | undefined
-    if (workspace !== undefined) cwd = workspace.path
-    else {
-      try {
-        const snapshot = await this.persistence.stat(sessionId)
-        cwd = snapshot?.header.cwd
-      } catch {
-        cwd = undefined
-      }
-    }
-
-    const outcome = await this.registry.enqueueOperation(async () => {
-      const state = this.registry.requireState()
-      const archived = state.archivedSessionIds
-      const archivedNow = archived.includes(sessionId)
-      if (archivedNow) {
-        await this.registry.setState({
-          ...state,
-          archivedSessionIds: archived.filter((id) => id !== sessionId),
-        })
-      }
-      if (workspace !== undefined) {
-        await workspace.detachSession(sessionId)
-      }
-      return { archived: archivedNow, detached: workspace !== undefined }
-    }) as Promise<{ archived: boolean; detached: boolean }>
-
-    let removed = false
-    let path: string | undefined
-    if (cwd !== undefined) {
-      path = sessionDirectory(cwd, sessionId)
-      try {
-        await rm(path, { recursive: true, force: true })
-        removed = true
-      } catch {
-        removed = false
-      }
-    }
-    return { ...outcome, removed, path }
-  }
 }
 
-/** Handle the `/_dsh/session-archive` same-origin backend. */
 async function handle(archive: WorkspaceArchive, req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === 'GET') {
-    responseJson(res, 200, { ok: true, value: { archivedSessionIds: archive.list() } })
+    responseJson(res, 200, { ok: true, value: { archivedSessionIds: archive.list(), capabilities: { preview: true, restore: false, delete: false } } })
     return
   }
   if (req.method !== 'POST') {
@@ -391,59 +200,34 @@ async function handle(archive: WorkspaceArchive, req: IncomingMessage, res: Serv
     responseJson(res, 403, { ok: false, error: { code: 'origin-rejected', message: 'The request must originate from this DSH Web application' } })
     return
   }
-  let parsed: { action: 'restore' | 'delete' | 'preview'; sessionId: string }
+
   try {
-    const body = await readJson(req) as unknown
-    if (!isRecord(body) || (body.action !== 'restore' && body.action !== 'delete' && body.action !== 'preview')) {
-      throw new TypeError('action must be "restore", "delete", or "preview"')
+    const body = await readJson(req)
+    if (!isRecord(body) || body.action !== 'preview') {
+      responseJson(res, 409, { ok: false, error: { code: 'unsupported-action', message: 'Current DSH does not expose a safe restore or permanent-delete API' } })
+      return
     }
     if (typeof body.sessionId !== 'string' || body.sessionId.length === 0) throw new TypeError('sessionId is required')
-    parsed = { action: body.action, sessionId: body.sessionId }
+    const preview = await archive.preview(body.sessionId)
+    responseJson(res, 200, { ok: true, value: { preview } })
   } catch (error) {
-    responseJson(res, error instanceof RangeError ? 413 : 400, { ok: false, error: { code: 'invalid-request', message: publicMessage(error) } })
-    return
-  }
-  try {
-    if (parsed.action === 'restore') {
-      const restored = await archive.restore(parsed.sessionId)
-      responseJson(res, 200, { ok: true, value: { restored, archivedSessionIds: archive.list() } })
-    } else if (parsed.action === 'preview') {
-      const preview = await archive.preview(parsed.sessionId)
-      responseJson(res, 200, { ok: true, value: { preview } })
-    } else {
-      const deleted = await archive.deleteSession(parsed.sessionId)
-      responseJson(res, 200, { ok: true, value: { deleted, archivedSessionIds: archive.list() } })
-    }
-  } catch (error) {
-    // Prefer the error's own code when present (e.g. `delete-live`), so the
-    // client can localize the message instead of surfacing the raw English
-    // guard text.
-    const errorCode = typeof error === 'object' && error !== null
-      ? (error as { code?: unknown }).code
-      : undefined
-    const code = typeof errorCode === 'string' && errorCode.length > 0
-      ? errorCode
-      : parsed.action === 'restore' ? 'restore-failed' : parsed.action === 'preview' ? 'preview-failed' : 'delete-failed'
-    responseJson(res, 400, { ok: false, error: { code, message: publicMessage(error) } })
+    const code = typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code: string }).code)
+      : 'preview-failed'
+    responseJson(res, error instanceof RangeError ? 413 : 400, { ok: false, error: { code, message: publicMessage(error) } })
   }
 }
 
 /** Plugin entry. */
-export async function apply(ctx: Context): Promise<() => void> {
-  const archive = new WorkspaceArchive(ctx.workspaceRegistry, ctx.sessions, ctx.sessionPersistence)
-  // Expose to sibling host plugins.
+export function apply(ctx: Context): void {
+  const archive = new WorkspaceArchive(ctx.workspaceRegistry, ctx.sessionPersistence)
   ctx.provide('workspaceArchive', archive)
-  // Register the same-origin route when a webServer is present.
-  let disposeRoutes: () => void = () => {}
   ctx.inject(['webServer'], (webCtx) => {
-    const server = webCtx.webServer
-    const detach = server.register({
+    const detach = webCtx.webServer.register({
       kind: 'exact',
       path: ROUTE,
       handler: (req, res) => { void handle(archive, req, res) },
     })
-    disposeRoutes = detach
     webCtx.effect(() => detach, 'dsh-session-archive: route')
   })
-  return () => { disposeRoutes() }
 }

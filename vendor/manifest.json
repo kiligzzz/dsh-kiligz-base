@@ -34,27 +34,11 @@
       "license": "MIT"
     },
     {
-      "id": "auto-continue",
-      "package": "dsh-client-auto-continue",
-      "version": "0.11.4",
-      "source": "https://github.com/HsiangNianian/dsh-auto-continue",
-      "commit": "592afc0c143c1daf1c4fb3dd01a4547dd0e626c8",
-      "license": "MIT"
-    },
-    {
       "id": "vision-bridge",
       "package": "@goodandready/dsh-vision-bridge",
       "version": "0.5.29",
       "source": "https://github.com/GooDAnDReaDY/dsh-vision-bridge",
-      "commit": "4975550df7aa5b521bd934c3cba73b5578ffd573",
-      "license": "MIT"
-    },
-    {
-      "id": "better-sidebar",
-      "package": "dsh-better-sidebar",
-      "version": "0.18.0",
-      "source": "https://github.com/omdsh-dev/DSH-better-sidebar",
-      "commit": "146840bb4f1b67e9b9ab8c556355613b20bd20e3",
+      "commit": "22cbdbb41175b3c1447668627d851144cd5b10a8",
       "license": "MIT"
     }
   ]

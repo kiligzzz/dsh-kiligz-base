@@ -12,7 +12,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   Button,
-  IconTrashOutline16,
   Input,
   Modal,
   StateDot,
@@ -45,7 +44,7 @@ const en = {
   now: 'now',
   close: 'Close',
   title: 'Archived sessions',
-  intro: 'These sessions are hidden from every list. Restore one to bring it back into its directory, or delete it permanently.',
+  intro: 'These sessions are hidden from every list. Current DSH exposes safe preview only; restore and permanent deletion are unavailable.',
   preview: 'Preview',
   previewTitle: 'Session preview',
   previewNote: 'Showing user questions only.',
@@ -102,7 +101,7 @@ const zh: Record<LocaleKey, string> = {
   now: '刚刚',
   close: '关闭',
   title: '已归档会话',
-  intro: '这些会话已从所有列表中隐藏。恢复一个即可把它放回原目录，或永久删除它。',
+  intro: '这些会话已从所有列表中隐藏。当前 DSH 只提供安全预览，暂不支持恢复或永久删除。',
   preview: '预览',
   previewTitle: '会话预览',
   previewNote: '仅展示用户问题。',
@@ -163,20 +162,6 @@ interface SessionGroup {
   sessions: Array<{ summary: SessionSummary; title: string; updatedAt?: number | undefined }>
 }
 
-interface ApiSuccess {
-  ok: true
-  value: {
-    restored?: boolean
-    deleted?: { archived: boolean; detached: boolean; removed: boolean }
-    archivedSessionIds: string[]
-  }
-}
-interface ApiFailure {
-  ok: false
-  error: { code: string; message: string }
-}
-type ApiResponse = ApiSuccess | ApiFailure
-
 /** One previewed user question returned by the host. */
 interface PreviewQuestion {
   seq: number
@@ -188,36 +173,6 @@ interface PreviewData {
   title?: string | undefined
   cwd?: string | undefined
   questions: PreviewQuestion[]
-}
-
-/** Same-origin action call (restore or delete) to the host route. */
-async function postAction(action: 'restore' | 'delete', sessionId: string): Promise<ApiResponse> {
-  let response: Response
-  try {
-    response = await fetch(ROUTE, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, sessionId }),
-    })
-  } catch {
-    return { ok: false, error: { code: 'network', message: 'Network request failed' } }
-  }
-  let body: unknown
-  try {
-    body = await response.json() as unknown
-  } catch {
-    return { ok: false, error: { code: 'unparseable', message: 'Non-JSON response' } }
-  }
-  if (response.ok && body?.ok === true) return body as ApiSuccess
-  const failure = body as Partial<ApiFailure>
-  return {
-    ok: false,
-    error: {
-      code: failure.error?.code ?? 'http',
-      message: failure.error?.message ?? `HTTP ${response.status}`,
-    },
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -300,26 +255,21 @@ function matchesTitle(value: string, query: string): boolean {
   return value.toLowerCase().includes(query)
 }
 
-function ArchivedRow({ title, updatedAt, busy, restored, onPreview, onRestore, onDeleteRequest, t }: {
+function ArchivedRow({ title, updatedAt, onPreview, t }: {
   title: string
   updatedAt?: number | undefined
-  busy: boolean
-  restored: boolean
   onPreview: () => void
-  onRestore: () => void
-  onDeleteRequest: () => void
   t: Translate
 }) {
   const now = Date.now()
   const locale = t('now') === '刚刚' ? 'zh' : 'en'
   return (
-    <li className="dsa-row" data-restored={restored || undefined}>
-      <StateDot state={restored ? 'ready' : 'archived'} />
+    <li className="dsa-row">
+      <StateDot state="archived" />
       <button
         type="button"
         className="dsa-row-main"
         title={t('preview')}
-        disabled={restored}
         onClick={onPreview}
       >
         <strong>{title}</strong>
@@ -335,19 +285,6 @@ function ArchivedRow({ title, updatedAt, busy, restored, onPreview, onRestore, o
           </time>
         )
         : null}
-      <Button size="sm" variant="outline" disabled={busy || restored} onClick={onRestore}>
-        {restored ? t('restored') : busy ? t('restoring') : t('restore')}
-      </Button>
-      <button
-        type="button"
-        className="dsa-delete-btn"
-        aria-label={t('delete')}
-        title={t('delete')}
-        disabled={busy || restored}
-        onClick={onDeleteRequest}
-      >
-        <IconTrashOutline16 />
-      </button>
     </li>
   )
 }
@@ -400,11 +337,9 @@ function PreviewModal({ session, loading, error, preview, onClose, t }: {
   )
 }
 
-function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
+function PanelBody({ useWorkspaces, useSessions, t }: {
   useWorkspaces: FooterProps['useWorkspaces']
   useSessions: FooterProps['useSessions']
-  /** Re-pull the workspace + session baselines so the list drops deleted ids. */
-  refresh: () => Promise<void>
   t: Translate
 }) {
   const archivedIds = useWorkspaces((state) => state.archivedSessionIds) as string[]
@@ -412,11 +347,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
   const workspaces = useWorkspaces((state) => state.items) as WorkspaceSummary[]
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const [busy, setBusy] = useState<string | null>(null)
-  const [restoredIds, setRestoredIds] = useState<string[]>([])
-  const [deletedIds, setDeletedIds] = useState<string[]>([])
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
-  const [error, setError] = useState<string | undefined>(undefined)
   const [previewing, setPreviewing] = useState<{ id: string; title: string } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewData, setPreviewData] = useState<PreviewData | undefined>(undefined)
@@ -431,19 +361,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
     return <p className="dsa-empty">{t('empty')}</p>
   }
 
-  const restore = (id: string): void => {
-    setBusy(id)
-    setError(undefined)
-    void postAction('restore', id).then((result) => {
-      setBusy(null)
-      if (!result.ok) {
-        setError(result.error.message)
-        return
-      }
-      setRestoredIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
-    })
-  }
-
   const openPreview = (id: string, title: string): void => {
     setPreviewing({ id, title })
     setPreviewLoading(true)
@@ -456,29 +373,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
         return
       }
       setPreviewData(result.preview)
-    })
-  }
-
-  const deleteSession = (id: string): void => {
-    setConfirmingDelete(null)
-    setBusy(id)
-    setError(undefined)
-    void postAction('delete', id).then((result) => {
-      setBusy(null)
-      if (!result.ok) {
-        // Friendly, localized message for the known "still open" case; any
-        // other failure falls back to the generic delete-failed text.
-        const message = result.error.code === 'delete-live'
-          ? t('deleteLiveError')
-          : t('deleteFailed')
-        setError(message)
-        return
-      }
-      setDeletedIds((ids) => (ids.includes(id) ? ids : [...ids, id]))
-      // Refresh the workspace + session baselines instead of reloading the
-      // whole page: archivedSessionIds drops the deleted id and byId drops
-      // the stale entry, so the panel re-renders with the row gone.
-      void refresh()
     })
   }
 
@@ -501,13 +395,8 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
         }))
         .filter((group) => group.sessions.length > 0)
 
-  const confirmTarget = confirmingDelete === null
-    ? undefined
-    : visible.flatMap((group) => group.sessions).find(({ summary }) => summary.id === confirmingDelete)
-
   return (
     <div className="dsa-body">
-      {error === undefined ? null : <div className="dsa-error">{t('failed')}: {error}</div>}
       <Input
         className="dsa-search"
         value={query}
@@ -520,7 +409,7 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
           <div className="dsa-groups">
             {visible.map((group) => {
               const isCollapsed = collapsed.has(group.key)
-              const groupSessions = group.sessions.filter(({ summary }) => !deletedIds.includes(summary.id))
+              const groupSessions = group.sessions
               if (groupSessions.length === 0) return null
               return (
                 <section key={group.key} className="dsa-group">
@@ -543,11 +432,7 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
                             key={summary.id}
                             title={title}
                             updatedAt={updatedAt}
-                            busy={busy === summary.id}
-                            restored={restoredIds.includes(summary.id)}
                             onPreview={() => { openPreview(summary.id, title) }}
-                            onRestore={() => { restore(summary.id) }}
-                            onDeleteRequest={() => { setConfirmingDelete(summary.id) }}
                             t={t}
                           />
                         ))}
@@ -558,37 +443,6 @@ function PanelBody({ useWorkspaces, useSessions, refresh, t }: {
               )
             })}
           </div>
-        )}
-      {confirmTarget === undefined || confirmingDelete === null
-        ? null
-        : (
-          <Modal
-            open
-            className="dsa-delete-modal"
-            onClose={() => { setConfirmingDelete(null) }}
-            title={t('deleteTitle')}
-            closeLabel={t('close')}
-            footer={
-              <>
-                <Button variant="outline" onClick={() => { setConfirmingDelete(null) }}>
-                  {t('close')}
-                </Button>
-                <Button
-                  variant="primary"
-                  className="dsa-delete-confirm"
-                  disabled={busy === confirmingDelete}
-                  onClick={() => { deleteSession(confirmingDelete) }}
-                >
-                  {busy === confirmingDelete ? t('deleting') : t('deleteConfirm')}
-                </Button>
-              </>
-            }
-          >
-            <div className="dsa-delete-warning">
-              <p><strong>{confirmTarget.title}</strong></p>
-              <p>{t('deleteWarning')}</p>
-            </div>
-          </Modal>
         )}
       {previewing === null
         ? null
@@ -618,10 +472,7 @@ function ArchiveIcon(): ReactNode {
 }
 
 /** Footer entry that opens the archived-session panel. */
-function FooterEntry({ useWorkspaces, useSessions, refresh, t, wide, ...rest }: FooterProps & {
-  /** Re-pull the workspace + session baselines after a delete. */
-  refresh: () => Promise<void>
-}) {
+function FooterEntry({ useWorkspaces, useSessions, t, wide, ...rest }: FooterProps) {
   const [open, setOpen] = useState(false)
   // The sidebar shell always passes `wide` (renderSlot("sidebar.footer.action",
   // { wide })): true expanded, false collapsed to the icon rail. It is the only
@@ -653,7 +504,7 @@ function FooterEntry({ useWorkspaces, useSessions, refresh, t, wide, ...rest }: 
             closeLabel={translate('close')}
             description={translate('intro')}
           >
-            <PanelBody useWorkspaces={useWorkspaces} useSessions={useSessions} refresh={refresh} t={translate} />
+            <PanelBody useWorkspaces={useWorkspaces} useSessions={useSessions} t={translate} />
           </Modal>
         )
         : null}
@@ -687,7 +538,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-groups{display:grid;gap:14px}
 .dsa-group{display:grid;gap:6px}
 .dsa-group-head{display:flex;align-items:center;gap:7px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%}
-.dsa-group-head:focus-visible{outline:2px solid #7c6ff0;outline-offset:-2px;border-radius:6px}
+.dsa-group-head:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;border-radius:6px}
 .dsa-chevron{color:var(--dsw-alias-label-tertiary);font-size:10px;flex:none;transition:transform .14s ease}
 .dsa-chevron[data-open]{transform:rotate(90deg)}
 .dsa-group-head strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -695,22 +546,11 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-group-count{margin-left:auto;flex:none;font-size:10px;padding:2px 7px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
 .dsa-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .dsa-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
-.dsa-row[data-restored]{opacity:.55}
-.dsa-row-main{min-width:0;flex:1;display:grid;gap:2px}
-.dsa-row-main strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsa-delete-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .12s ease,color .12s ease}
-.dsa-delete-btn:hover:not(:disabled){background:rgba(205,72,72,.1);color:#c34f4f}
-.dsa-delete-btn:focus-visible{outline:2px solid #cf5050;outline-offset:-1px}
-.dsa-delete-btn:disabled{opacity:.4;cursor:default}
-.dsa-delete-modal{width:min(420px,90vw)!important}
-.dsa-delete-warning{display:grid;gap:8px;padding:2px 0 4px}
-.dsa-delete-warning p{margin:0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-tertiary)}
-.dsa-delete-warning strong{display:block;margin-bottom:4px;font-size:13px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsa-delete-confirm{background:#cf5050!important;border-color:#cf5050!important}
 .dsa-row-main{min-width:0;flex:1;display:grid;gap:2px;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dsa-row-main strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-row-time{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums;cursor:default}
-.dsa-row-main:hover strong{color:#6659c7}
-.dsa-row-main:focus-visible{outline:2px solid #7c6ff0;outline-offset:-2px;border-radius:6px}
+.dsa-row-main:hover strong{color:var(--dsw-alias-label-primary)}
+.dsa-row-main:focus-visible{outline:2px solid var(--dsw-alias-border-l3);outline-offset:-2px;border-radius:6px}
 .dsa-row-main:disabled{cursor:default}
 .dsa-preview-modal{width:min(540px,90vw)!important;height:min(480px,75vh)!important;display:flex!important;flex-direction:column}
 .dsa-preview-content{display:flex!important;flex-direction:column;flex:1;min-height:0}
@@ -720,7 +560,7 @@ div:has(> [data-slot="sidebar.footer.action"]){flex-direction:column}
 .dsa-preview-head strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsa-preview-head code{font-size:10px;color:var(--dsw-alias-label-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dsa-preview-count{margin-left:auto;flex:none;font-size:10px;padding:2px 8px;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
-.dsa-preview-note{margin:0;padding:6px 10px;border-radius:8px;background:rgba(92,108,213,.08);color:#5149a6;font-size:11px;line-height:1.5}
+.dsa-preview-note{margin:0;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .dsa-preview-empty{margin:0;padding:12px 2px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .dsa-questions{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .dsa-question{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1)}
@@ -749,31 +589,19 @@ export function apply(ctx: ClientApi): void {
   ctx.effect(installStyles, '@kiligzzz/dsh-session-archive: styles')
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), '@kiligzzz/dsh-session-archive: locale')
   const t: Translate = ctx.locale.bind(NS)
-  // Re-pull the workspace + session baselines. The optional `workspaces` /
-  // `sessions` services exist on the client runtime; a delete already mutated
-  // the host store, so this refreshes the local snapshots without a reload.
-  const refresh = async (): Promise<void> => {
-    const workspaces = ctx.get('workspaces') as { refresh?: () => Promise<unknown> } | undefined
-    const sessions = ctx.get('sessions') as { refresh?: () => Promise<unknown> } | undefined
-    await Promise.allSettled([
-      workspaces?.refresh?.(),
-      sessions?.refresh?.(),
-    ])
-  }
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'session-archive',
     // 排在插件市场（community-market order=10）上方、Cordis 面板（默认 order=0）下方。
     order: 5,
     label: () => t('nav'),
-    inject: () => ({ t, refresh }),
+    inject: () => ({ t }),
   }, FooterEntry))
 }
 
 /** Minimal structural shape of the client context this plugin requires. */
 interface ClientApi {
   effect(fn: () => unknown, label?: string): void
-  get(name: string): unknown
   slots: {
     inject(name: 'sidebar.footer.action', callback: () => unknown): unknown
     register(options: unknown, component: unknown): unknown

@@ -29,6 +29,9 @@
   `mcp_session(load)`，再通过 `@deepseek-ai/dsh-mcp-client` 把该 Server 的全部工具加载到当前 Agent。
 - `mcp_session` 支持 `load` / `unload` / `status`，不同会话互不影响；Agent 销毁时自动关闭连接并注销工具。
 - `enabled` 表示 Server 是否允许被会话加载；直接编辑 `~/.dsh/mcp.json` 后，描述目录会在 3 秒内刷新，且只安全重连已经加载过该 Server 的会话。
+- **OAuth MCP**：HTTP Server 可选择 OAuth；插件通过标准 protected-resource/authorization-server discovery、DCR 与 PKCE 打开浏览器登录，凭据保存到 DSH `credentials` GrantRecord，不写入 `mcp.json`。
+- 同一 `issuer + resource` 下的多个 MCP URL 共用一次登录；access token 到期前自动刷新，refresh token 轮换使用 `credentials.modifyRecord()` 串行保存。
+- 设置页显示认证状态并提供登录/退出；退出共享授权时，同一认证资源下的已加载 MCP 会一起重连或卸载。
 - **打开配置文件**（macOS / Linux 系统编辑器）。
 
 **能力清单 prompt 段**

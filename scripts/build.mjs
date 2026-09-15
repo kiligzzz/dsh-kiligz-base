@@ -5,10 +5,9 @@ import vm from 'node:vm'
 const id = '@kiligzzz/dsh-kiligz-base'
 const hostExternal = [
   '@deepseek-ai/*',
+  '@modelcontextprotocol/*',
   'cordis',
   '@michengai/dsh-automation',
-  'dsh-better-sidebar',
-  'dsh-client-auto-continue',
   '@goodandready/dsh-vision-bridge',
 ]
 const clientExternal = [
@@ -24,9 +23,7 @@ const featureClientBundles = [
   'vendor/features/skill-mcp-manager/lib/client.js',
   'vendor/features/ui-appearance/lib/client.js',
   'node_modules/@michengai/dsh-automation/lib/client.js',
-  'node_modules/dsh-client-auto-continue/lib/client.js',
   'node_modules/@goodandready/dsh-vision-bridge/lib/client.js',
-  'node_modules/dsh-better-sidebar/lib/client.js',
 ]
 
 /** Simplified Vision Bridge settings panel: provider and model only, localized. */
@@ -69,8 +66,8 @@ const VISION_SETTINGS_PANEL = `    function VisionSettingsPanel(props) {
           const [config, list] = await Promise.all([api('GET'), fetchModels()])
           if (!alive) return
           const entries = Array.isArray(list) ? list : []
-          const vision = entries.filter((item) => item && item.vision !== false)
-          setCatalog(vision.length > 0 ? vision : entries)
+          const vision = entries.filter((item) => item && item.vision === true)
+          setCatalog(vision)
           const data = (config && config.data) || {}
           const currentProvider = String(data.visionProvider || data.provider || '')
           const currentModel = String(data.visionModel || data.model || '')
@@ -239,22 +236,16 @@ function exposePanel(path, source) {
   if (path.includes('dsh-automation')) {
     let output = removeBetween(
       source,
-      '  ctx.slots.inject("settings.section", () => ctx.slots.register({',
-      '  ctx.slots.inject("sidebar.schedule",',
-      '',
-      'automation settings section',
-    )
-    output = replaceOnce(
-      output,
-      '  ctx.effect(() => installSettingsNavIcon(() => [t("tab"), "Scheduled tasks", "\\u5B9A\\u65F6\\u4EFB\\u52A1"]), "dsh-automation: settings icon");\n',
-      '',
-      'automation settings icon',
-    )
-    output = replaceOnce(
-      output,
-      'const runtime = createAutomationRuntime(ctx.connection.rpc);',
-      'const runtime = createAutomationRuntime(ctx.connection.rpc);\n  if (module.exports.__dshKiligz) module.exports.__dshKiligz.runtime = runtime;',
-      'automation runtime export',
+      'function apply(ctx) {',
+      '\nfunction createScheduledSessionOpener',
+      `function apply(ctx) {
+  ctx.effect(() => installStyles(), "dsh-automation: styles");
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), "dsh-automation: locale");
+  const runtime = createAutomationRuntime(ctx.connection.rpc);
+  if (module.exports.__dshKiligz) module.exports.__dshKiligz.runtime = runtime;
+  ctx.effect(() => installAutomationSessionSync(runtime, () => ctx.sessions), "dsh-automation: session sync");
+}`,
+      'Automation minimal client lifecycle',
     )
     return replaceOnce(
       output,

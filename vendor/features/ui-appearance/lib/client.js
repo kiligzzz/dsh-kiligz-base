@@ -8,7 +8,7 @@ window.__ModuleLoader__.load({
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
-		//#region ../../../../dsh-ui-appearance/node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
+		//#region node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
 		function r(e) {
 			var t, f, n = "";
 			if ("string" == typeof e || "number" == typeof e) n += e;
@@ -1338,36 +1338,36 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AppearanceCustomizerRow_module_css_default = {
-			"chip": "zA5oWG_chip",
-			"schemeInput": "zA5oWG_schemeInput",
+			"chipRow": "zA5oWG_chipRow",
+			"colorHex": "zA5oWG_colorHex",
 			"sectionTitle": "zA5oWG_sectionTitle",
+			"chip": "zA5oWG_chip",
+			"slider": "zA5oWG_slider",
+			"body": "zA5oWG_body",
+			"checkRow": "zA5oWG_checkRow",
+			"schemeInput": "zA5oWG_schemeInput",
+			"chipSelected": "zA5oWG_chipSelected",
+			"urlInput": "zA5oWG_urlInput",
+			"thumb": "zA5oWG_thumb",
+			"colorField": "zA5oWG_colorField",
+			"urlRow": "zA5oWG_urlRow",
 			"footer": "zA5oWG_footer",
-			"checkbox": "zA5oWG_checkbox",
-			"group": "zA5oWG_group",
+			"section": "zA5oWG_section",
+			"dragging": "zA5oWG_dragging",
+			"hint": "zA5oWG_hint",
+			"sliderValue": "zA5oWG_sliderValue",
 			"colorGrid": "zA5oWG_colorGrid",
 			"colorSwatch": "zA5oWG_colorSwatch",
-			"checkRow": "zA5oWG_checkRow",
-			"hint": "zA5oWG_hint",
-			"colorField": "zA5oWG_colorField",
-			"colorLabel": "zA5oWG_colorLabel",
-			"dragging": "zA5oWG_dragging",
-			"chipSelected": "zA5oWG_chipSelected",
-			"body": "zA5oWG_body",
-			"slider": "zA5oWG_slider",
-			"sliderRow": "zA5oWG_sliderRow",
-			"ghostButton": "zA5oWG_ghostButton",
-			"colorSwatchInput": "zA5oWG_colorSwatchInput",
-			"thumb": "zA5oWG_thumb",
-			"colorHex": "zA5oWG_colorHex",
 			"uploadRow": "zA5oWG_uploadRow",
-			"sliderValue": "zA5oWG_sliderValue",
-			"fileInput": "zA5oWG_fileInput",
-			"urlRow": "zA5oWG_urlRow",
-			"section": "zA5oWG_section",
-			"urlInput": "zA5oWG_urlInput",
 			"sliderLabel": "zA5oWG_sliderLabel",
 			"schemePanel": "zA5oWG_schemePanel",
-			"chipRow": "zA5oWG_chipRow"
+			"colorSwatchInput": "zA5oWG_colorSwatchInput",
+			"checkbox": "zA5oWG_checkbox",
+			"ghostButton": "zA5oWG_ghostButton",
+			"sliderRow": "zA5oWG_sliderRow",
+			"colorLabel": "zA5oWG_colorLabel",
+			"group": "zA5oWG_group",
+			"fileInput": "zA5oWG_fileInput"
 		};
 		//#endregion
 		//#region src/client/AppearanceCustomizerRow.tsx
@@ -2292,8 +2292,8 @@ window.__ModuleLoader__.load({
 		* containing block of every fixed-position descendant (menus, tooltips,
 		* toasts), and any `z-index` traps those descendants in a stacking context
 		* scoped to #root — whose own effective z then sits at the page level. Either
-		* would let top-level third-party panels (e.g. dsh-better-sidebar's
-		* `position: fixed; z-index: 40` panel) paint over the DSH settings dialog
+		* would let top-level third-party panels (e.g. a plugin panel at
+		* `position: fixed; z-index: 40`) paint over the DSH settings dialog
 		* (`position: fixed; z-index: 1000`, a descendant of #root). Pushing the
 		* wallpaper layer to -1 instead of lifting #root keeps fixed overlays at the
 		* top level, so the dialog always wins. Blurring the wallpaper directly is
@@ -2362,8 +2362,8 @@ body[data-dsw-conversation-glass] .dshDesktopDetailsSurface {
 body[data-dsw-conversation-glass] .dshDesktopFrame {
   background: transparent !important;
 }
-/* Frosted-glass overlays: translucent popovers (model picker menu, better-sidebar
-   panel) and the composer input card let the wallpaper through but blur whatever
+/* Frosted-glass overlays: translucent popovers (model picker menu, plugin
+   panels) and the composer input card let the wallpaper through but blur whatever
    sits underneath (chat text), so overlays stay see-through without text showing
    through confusingly. */
 [role="menu"],
@@ -2374,6 +2374,17 @@ body[data-dsw-conversation-glass] .dshDesktopFrame {
 [data-dsh-panel-host] [class*="_panel"] {
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+/* The right sidebar overlays the conversation on narrow layouts. Give it an
+   almost-solid theme surface so underlying text cannot compete with preview
+   content while retaining a restrained frosted finish. */
+[data-sidebar-right-panel] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-50) 96%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+}
+body[data-ds-dark-theme] [data-sidebar-right-panel] {
+  background: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) 96%, transparent) !important;
 }
 [data-composer-card] {
   backdrop-filter: blur(16px) saturate(1.4);

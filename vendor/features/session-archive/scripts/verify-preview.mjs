@@ -8,10 +8,9 @@ const events = [
   { seq: 3, type: 'user/message', data: { content: 'second question' } },
 ]
 
-function archiveWith(handle) {
+function archiveWith(handle, archivedSessionIds = ['session-1']) {
   return new WorkspaceArchive(
-    { requireState: () => ({ archivedSessionIds: ['session-1'] }) },
-    { get: () => undefined },
+    { archivedSessionIds },
     { open: async () => handle },
   )
 }
@@ -19,7 +18,7 @@ function archiveWith(handle) {
 let closeCalls = 0
 const preview = await archiveWith({
   header: { id: 'session-1', cwd: '/workspace' },
-  read: async () => events,
+  read: async () => ({ eventState: 'detached', events }),
   close: async () => { closeCalls += 1 },
 }).preview('session-1')
 
@@ -27,8 +26,8 @@ assert.deepEqual(preview, {
   title: 'Current title',
   cwd: '/workspace',
   questions: [
-    { seq: 1, text: ['first question'] },
     { seq: 3, text: ['second question'] },
+    { seq: 1, text: ['first question'] },
   ],
 })
 assert.equal(closeCalls, 1)
@@ -43,5 +42,17 @@ await assert.rejects(
   readFailure,
 )
 assert.equal(closeCalls, 2)
+
+let opened = false
+const guarded = new WorkspaceArchive(
+  { archivedSessionIds: [] },
+  { open: async () => { opened = true; throw new Error('must not open') } },
+)
+await assert.rejects(guarded.preview('session-1'), /not archived/)
+assert.equal(opened, false)
+
+const clone = archiveWith({}, ['session-1']).list()
+clone.length = 0
+assert.deepEqual(archiveWith({}, ['session-1']).list(), ['session-1'])
 
 console.log('session archive preview verification passed')

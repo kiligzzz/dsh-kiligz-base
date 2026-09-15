@@ -23,6 +23,7 @@
   },
   "files": [
     "index.js",
+    "oauth-broker.js",
     "lib",
     "cordis.patch.yml",
     "README.md",
@@ -45,6 +46,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kiligzzz/dsh-skill-mcp-manager.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-mcp-client": "^0.1.0-rc.7 || ^0.1.1-rc.1",

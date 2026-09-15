@@ -1,51 +1,9 @@
 // src/index.ts
-import { rm } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 var ROUTE = "/_dsh/session-archive";
 var name = "@kiligzzz/dsh-session-archive";
-var inject = ["workspaceRegistry", "sessions", "sessionPersistence"];
+var inject = ["workspaceRegistry", "sessionPersistence"];
 var MAX_BODY = 64 * 1024;
-function sessionRoot() {
-  const home = process.env.DSH_HOME?.length > 0 ? process.env.DSH_HOME : join(homedir(), ".dsh");
-  return join(home, "sessions");
-}
-function projectKey(cwd) {
-  if (cwd.length === 0) throw new Error("cannot encode an empty project path");
-  let readable = "";
-  let separatorRun = false;
-  for (let i = 0; i < cwd.length; i++) {
-    const code = cwd.charCodeAt(i);
-    const ch = String.fromCharCode(code);
-    if (ch === "/" || ch === "\\" || ch === ":") {
-      if (!separatorRun) readable += "-";
-      separatorRun = true;
-    } else if (ch !== "~" && /^[A-Za-z0-9._-]$/.test(ch)) {
-      readable += ch;
-      separatorRun = false;
-    } else {
-      readable += `~${code.toString(16).toUpperCase().padStart(4, "0")}`;
-      separatorRun = false;
-    }
-  }
-  return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
-}
-function encodeSegment(raw) {
-  if (raw.length === 0) throw new Error("cannot encode an empty path segment");
-  if (raw === ".") return "~002E";
-  if (raw === "..") return "~002E~002E";
-  let out = "";
-  for (let i = 0; i < raw.length; i++) {
-    const code = raw.charCodeAt(i);
-    const ch = String.fromCharCode(code);
-    if (ch !== "~" && /^[A-Za-z0-9._-]$/.test(ch)) out += ch;
-    else out += `~${code.toString(16).toUpperCase().padStart(4, "0")}`;
-  }
-  return out;
-}
-function sessionDirectory(cwd, sessionId) {
-  return join(sessionRoot(), projectKey(cwd), encodeSegment(sessionId));
-}
+var QUESTION_LIMIT = 100;
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -101,9 +59,9 @@ function contentLines(value, limit = 8) {
   const lines = [];
   const push = (text, cap = 300) => {
     if (typeof text !== "string") return;
-    const t = text.trim();
-    if (t.length === 0) return;
-    lines.push(t.length > cap ? `${t.slice(0, cap)}\u2026` : t);
+    const normalized = text.trim();
+    if (normalized.length === 0) return;
+    lines.push(normalized.length > cap ? `${normalized.slice(0, cap)}\u2026` : normalized);
   };
   if (Array.isArray(value)) {
     for (const block of value) push(blockText(block));
@@ -113,45 +71,41 @@ function contentLines(value, limit = 8) {
   return lines.slice(0, limit);
 }
 var WorkspaceArchive = class {
-  constructor(registry, sessions, persistence) {
+  constructor(registry, persistence) {
     this.registry = registry;
-    this.sessions = sessions;
     this.persistence = persistence;
   }
-  /** Archived ids in host order. */
+  /** Archived ids in host order. The clone prevents callers mutating registry state. */
   list() {
-    return this.registry.requireState().archivedSessionIds;
+    return [...this.registry.archivedSessionIds];
   }
-  /**
-   * Read a read-only preview of a session's log: metadata plus every user
-   * question rendered as plain text (newest first). Purely observational —
-   * never mutates the archived set or workspace accounting, so the user can
-   * inspect the questions before deciding to restore or delete.
-   * @param sessionId - session to preview.
-   * @returns metadata and the user-question list.
-   */
+  /** Read one archived Session preview through the public persistence handle. */
   async preview(sessionId) {
     if (typeof sessionId !== "string" || sessionId.length === 0) throw new TypeError("sessionId must be a non-empty string");
+    if (!this.registry.archivedSessionIds.includes(sessionId)) {
+      const error = new Error("session is not archived");
+      error.code = "not-archived";
+      throw error;
+    }
     const handle2 = await this.persistence.open(sessionId, "read");
-    const meta = handle2.header;
     let events;
     try {
-      events = await handle2.read();
+      ;
+      ({ events } = await handle2.read());
     } finally {
       await handle2.close();
     }
     let title;
     for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === "session/title") {
-        const data = events[i].data ?? {};
-        if (typeof data.title === "string" && data.title.length > 0) {
-          title = data.title;
-          break;
-        }
+      const event = events[i];
+      if (event.type !== "session/title") continue;
+      const data = event.data ?? {};
+      if (typeof data.title === "string" && data.title.length > 0) {
+        title = data.title;
+        break;
       }
     }
     const questions = [];
-    const QUESTION_LIMIT = 100;
     for (let i = events.length - 1; i >= 0 && questions.length < QUESTION_LIMIT; i--) {
       const event = events[i];
       if (event.type !== "user/message") continue;
@@ -159,95 +113,19 @@ var WorkspaceArchive = class {
       const source = isRecord(data.source) ? data.source : void 0;
       const sourceKind = typeof source?.kind === "string" ? source.kind : "user";
       if (sourceKind !== "user") continue;
-      questions.unshift({ seq: event.seq, text: contentLines(data.content) });
+      const text = contentLines(data.content);
+      if (text.length > 0) questions.push({ seq: event.seq, text });
     }
     return {
       title,
-      cwd: typeof meta.cwd === "string" ? meta.cwd : void 0,
+      cwd: typeof handle2.header.cwd === "string" ? handle2.header.cwd : void 0,
       questions
     };
-  }
-  /**
-   * Remove one session from the durable archived set. Idempotent: an id that
-   * is not archived resolves without writing. Serialized through the registry
-   * write chain so it cannot interleave with an in-flight archive.
-   * @param sessionId - session to restore.
-   */
-  async restore(sessionId) {
-    if (typeof sessionId !== "string" || sessionId.length === 0) throw new TypeError("sessionId must be a non-empty string");
-    return this.registry.enqueueOperation(async () => {
-      const state = this.registry.requireState();
-      const archived = state.archivedSessionIds;
-      if (!archived.includes(sessionId)) return false;
-      await this.registry.setState({
-        ...state,
-        archivedSessionIds: archived.filter((id) => id !== sessionId)
-      });
-      return true;
-    });
-  }
-  /**
-   * Permanently delete an archived session: unarchive it, detach its workspace
-   * accounting, and remove its on-disk log directory. Refuses live sessions.
-   * @param sessionId - session to delete.
-   * @returns a summary of what was removed.
-   */
-  async deleteSession(sessionId) {
-    if (typeof sessionId !== "string" || sessionId.length === 0) throw new TypeError("sessionId must be a non-empty string");
-    if (this.sessions.get(sessionId) !== void 0) {
-      const error = new Error(`cannot delete live session '${sessionId}'`);
-      error.code = "delete-live";
-      throw error;
-    }
-    let workspace;
-    for (const candidate of this.registry.list()) {
-      if (candidate.sessionIds.includes(sessionId)) {
-        workspace = candidate;
-        break;
-      }
-    }
-    let cwd;
-    if (workspace !== void 0) cwd = workspace.path;
-    else {
-      try {
-        const snapshot = await this.persistence.stat(sessionId);
-        cwd = snapshot?.header.cwd;
-      } catch {
-        cwd = void 0;
-      }
-    }
-    const outcome = await this.registry.enqueueOperation(async () => {
-      const state = this.registry.requireState();
-      const archived = state.archivedSessionIds;
-      const archivedNow = archived.includes(sessionId);
-      if (archivedNow) {
-        await this.registry.setState({
-          ...state,
-          archivedSessionIds: archived.filter((id) => id !== sessionId)
-        });
-      }
-      if (workspace !== void 0) {
-        await workspace.detachSession(sessionId);
-      }
-      return { archived: archivedNow, detached: workspace !== void 0 };
-    });
-    let removed = false;
-    let path;
-    if (cwd !== void 0) {
-      path = sessionDirectory(cwd, sessionId);
-      try {
-        await rm(path, { recursive: true, force: true });
-        removed = true;
-      } catch {
-        removed = false;
-      }
-    }
-    return { ...outcome, removed, path };
   }
 };
 async function handle(archive, req, res) {
   if (req.method === "GET") {
-    responseJson(res, 200, { ok: true, value: { archivedSessionIds: archive.list() } });
+    responseJson(res, 200, { ok: true, value: { archivedSessionIds: archive.list(), capabilities: { preview: true, restore: false, delete: false } } });
     return;
   }
   if (req.method !== "POST") {
@@ -259,55 +137,33 @@ async function handle(archive, req, res) {
     responseJson(res, 403, { ok: false, error: { code: "origin-rejected", message: "The request must originate from this DSH Web application" } });
     return;
   }
-  let parsed;
   try {
     const body = await readJson(req);
-    if (!isRecord(body) || body.action !== "restore" && body.action !== "delete" && body.action !== "preview") {
-      throw new TypeError('action must be "restore", "delete", or "preview"');
+    if (!isRecord(body) || body.action !== "preview") {
+      responseJson(res, 409, { ok: false, error: { code: "unsupported-action", message: "Current DSH does not expose a safe restore or permanent-delete API" } });
+      return;
     }
     if (typeof body.sessionId !== "string" || body.sessionId.length === 0) throw new TypeError("sessionId is required");
-    parsed = { action: body.action, sessionId: body.sessionId };
+    const preview = await archive.preview(body.sessionId);
+    responseJson(res, 200, { ok: true, value: { preview } });
   } catch (error) {
-    responseJson(res, error instanceof RangeError ? 413 : 400, { ok: false, error: { code: "invalid-request", message: publicMessage(error) } });
-    return;
-  }
-  try {
-    if (parsed.action === "restore") {
-      const restored = await archive.restore(parsed.sessionId);
-      responseJson(res, 200, { ok: true, value: { restored, archivedSessionIds: archive.list() } });
-    } else if (parsed.action === "preview") {
-      const preview = await archive.preview(parsed.sessionId);
-      responseJson(res, 200, { ok: true, value: { preview } });
-    } else {
-      const deleted = await archive.deleteSession(parsed.sessionId);
-      responseJson(res, 200, { ok: true, value: { deleted, archivedSessionIds: archive.list() } });
-    }
-  } catch (error) {
-    const errorCode = typeof error === "object" && error !== null ? error.code : void 0;
-    const code = typeof errorCode === "string" && errorCode.length > 0 ? errorCode : parsed.action === "restore" ? "restore-failed" : parsed.action === "preview" ? "preview-failed" : "delete-failed";
-    responseJson(res, 400, { ok: false, error: { code, message: publicMessage(error) } });
+    const code = typeof error === "object" && error !== null && typeof error.code === "string" ? String(error.code) : "preview-failed";
+    responseJson(res, error instanceof RangeError ? 413 : 400, { ok: false, error: { code, message: publicMessage(error) } });
   }
 }
-async function apply(ctx) {
-  const archive = new WorkspaceArchive(ctx.workspaceRegistry, ctx.sessions, ctx.sessionPersistence);
+function apply(ctx) {
+  const archive = new WorkspaceArchive(ctx.workspaceRegistry, ctx.sessionPersistence);
   ctx.provide("workspaceArchive", archive);
-  let disposeRoutes = () => {
-  };
   ctx.inject(["webServer"], (webCtx) => {
-    const server = webCtx.webServer;
-    const detach = server.register({
+    const detach = webCtx.webServer.register({
       kind: "exact",
       path: ROUTE,
       handler: (req, res) => {
         void handle(archive, req, res);
       }
     });
-    disposeRoutes = detach;
     webCtx.effect(() => detach, "dsh-session-archive: route");
   });
-  return () => {
-    disposeRoutes();
-  };
 }
 export {
   ROUTE,

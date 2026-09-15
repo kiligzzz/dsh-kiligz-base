@@ -6,17 +6,16 @@
  * validated Config, routes, tools, settings, persistence, and teardown.
  */
 import * as automation from '@michengai/dsh-automation'
-import * as autoContinue from 'dsh-client-auto-continue'
 import * as visionBridge from '@goodandready/dsh-vision-bridge'
-import * as betterSidebar from 'dsh-better-sidebar'
 import * as appearance from '../vendor/features/ui-appearance/lib/index.js'
 import * as sessionArchive from '../vendor/features/session-archive/lib/index.js'
 import * as skillMcpManager from '../vendor/features/skill-mcp-manager/index.js'
+import { mountVisionBridge } from './vision-tools.js'
 
 export const name = '@kiligzzz/dsh-kiligz-base'
+export const inject = ['tools']
 
 const AUTOMATION_DEFAULTS = {
-  maxConcurrentRuns: 2,
   runTimeoutMinutes: 60,
   misfireGraceMinutes: 15,
   historyLimit: 200,
@@ -28,7 +27,5 @@ export function apply(ctx, config = {}) {
   ctx.plugin(appearance)
   ctx.plugin(sessionArchive)
   ctx.plugin(skillMcpManager)
-  ctx.plugin(autoContinue)
-  ctx.plugin(visionBridge, { mode: 'hybrid', ...config.visionBridge })
-  ctx.plugin(betterSidebar, config.betterSidebar)
+  mountVisionBridge(ctx, visionBridge, config.visionBridge)
 }

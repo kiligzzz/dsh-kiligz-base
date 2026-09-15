@@ -60,6 +60,20 @@ describe('AppearanceApplier', () => {
     }
   })
 
+  it('keeps the right sidebar nearly opaque with a theme-aware frosted surface', () => {
+    const { ctx } = fakeCtx()
+    const applier = new AppearanceApplier(ctx)
+    try {
+      const sheet = document.getElementById(STYLE_ID)?.textContent ?? ''
+      expect(sheet).toContain('[data-sidebar-right-panel]')
+      expect(sheet).toContain('var(--dsw-static-neutral-bluish-50) 96%')
+      expect(sheet).toContain('var(--dsw-static-neutral-bluish-900) 96%')
+      expect(sheet).toContain('backdrop-filter: blur(20px) saturate(1.15)')
+    } finally {
+      applier.dispose()
+    }
+  })
+
   it('apply with custom settings writes body variables and forwards token overrides', () => {
     const { ctx, overrideTokens, remove } = fakeCtx()
     const applier = new AppearanceApplier(ctx)

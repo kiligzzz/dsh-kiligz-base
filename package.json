@@ -1,7 +1,7 @@
 {
   "name": "@kiligzzz/dsh-kiligz-base",
   "version": "0.2.0",
-  "description": "Unified DeepSeek Harness capability bundle with consistent UI for automation, skills, MCP, archives, appearance, vision, auto-continue, and sidebar tools.",
+  "description": "Unified DeepSeek Harness capability bundle with consistent UI for automation, skills, MCP, archives, appearance, and cross-model vision.",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -39,8 +39,7 @@
     "automation",
     "mcp",
     "skill",
-    "vision",
-    "sidebar"
+    "vision"
   ],
   "dsh": {
     "bundle": {
@@ -68,13 +67,13 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "verify": "node scripts/verify.mjs",
-    "test": "npm run verify"
+    "test:mcp": "node vendor/features/skill-mcp-manager/test/verify.mjs && node vendor/features/skill-mcp-manager/test/lazy-mcp.mjs && node vendor/features/skill-mcp-manager/test/oauth-broker.mjs",
+    "test": "npm run verify && npm run test:mcp"
   },
   "dependencies": {
-    "@michengai/dsh-automation": "0.1.34",
-    "dsh-better-sidebar": "0.18.0",
-    "dsh-client-auto-continue": "0.11.4",
-    "@goodandready/dsh-vision-bridge": "github:GooDAnDReaDY/dsh-vision-bridge#4975550df7aa5b521bd934c3cba73b5578ffd573"
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@goodandready/dsh-vision-bridge": "github:GooDAnDReaDY/dsh-vision-bridge#22cbdbb41175b3c1447668627d851144cd5b10a8",
+    "@michengai/dsh-automation": "0.1.40"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

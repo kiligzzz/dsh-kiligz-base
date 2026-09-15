@@ -40,7 +40,7 @@ expect('client stylesheet data-plugin', client.includes('tag.dataset.plugin = "'
 
 // 2. host shape
 check('host exports name', /export const name = '@kiligzzz\/dsh-skill-mcp-manager'/.test(host))
-check('host exports inject', /export const inject = \['tools'\]/.test(host))
+check('host exports inject', /export const inject = \['tools', 'skills', 'agents', 'credentials'\]/.test(host))
 check('host exports apply', /export function apply\(ctx\)/.test(host))
 
 // 3. client slots + 0.1.2 compat
@@ -53,9 +53,17 @@ check('package inject uses dsh-client-store', !JSON.stringify(pkg.dsh.client.inj
 
 // 4. MCP is session-scoped and progressively loaded
 check('host registers mcp_session', host.includes("name: 'mcp_session'"))
-check('host mounts MCP through Agent scope', host.includes('agent.ctx.plugin(plugin, clientConfig(s))'))
+check('host mounts MCP through Agent scope', host.includes('agent.ctx.plugin(plugin, await clientConfig(s))'))
 check('host does not globally sync MCP at startup', !host.includes('syncAll()'))
 check('host cleans Agent MCP state', host.includes("ctx.on('agent/disposed'"))
+check('host preserves OAuth config', host.includes("e.auth = { type: 'oauth' }"))
+check('host injects OAuth Bearer dynamically', host.includes("headers.Authorization = 'Bearer ' + grant.accessToken"))
+check('host exposes OAuth callback', host.includes("oauthBroker.callbackPath"))
+check('host derives callback from loopback socket', host.includes('requestLoopbackOrigin(req)'))
+check('host does not depend on DSH_WEB_URL', !host.includes('DSH_WEB_URL'))
+check('host refreshes whole OAuth credential group', host.includes('if (grant.refreshed) scheduleOAuthReload(grant.key)'))
+check('client exposes OAuth config mode', client.includes('OAuth（浏览器登录并自动刷新）'))
+check('client exposes OAuth login and logout', client.includes('/capabilities-api/mcp/oauth/login') && client.includes('/capabilities-api/mcp/oauth/logout'))
 
 // 5. REST surface used by the client exists in the host
 for (const ep of ['/capabilities-api', '/capabilities-api/skill/toggle', '/capabilities-api/skill/open',

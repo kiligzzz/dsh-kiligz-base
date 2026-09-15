@@ -23,6 +23,7 @@ fs.writeFileSync(path.join(tempHome, 'mcp.json'), JSON.stringify({
 const globalTools = new Map()
 const scopedTools = new WeakMap()
 const events = new Map()
+const credentialRecords = new Map()
 const cleanups = []
 let disposedFibers = 0
 let pluginCount = 0
@@ -57,6 +58,16 @@ const ctx = {
         promptText = text
         return () => { promptText = '' }
       }
+    }
+    if (name === 'credentials') return {
+      readRecord: async (key) => credentialRecords.get(key),
+      modifyRecord: async (key, mutate) => {
+        const current = credentialRecords.get(key)
+        const next = await mutate(current)
+        if (next !== undefined) credentialRecords.set(key, next)
+        return next === undefined ? current : next
+      },
+      deleteRecord: async (key) => { credentialRecords.delete(key) },
     }
     return undefined
   },

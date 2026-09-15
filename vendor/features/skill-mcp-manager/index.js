@@ -14,10 +14,11 @@ import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
+import { createOAuthBroker } from './oauth-broker.js'
 
 export const name = '@kiligzzz/dsh-skill-mcp-manager'
 
-export const inject = ['tools']
+export const inject = ['tools', 'skills', 'agents', 'credentials']
 
 export function apply(ctx) {
   const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
@@ -96,6 +97,62 @@ export function apply(ctx) {
     return out
   }
   function findSkill(name) { return listSkills().find((s) => s.name === name) || null }
+  function isInsideSkillsRoot(candidate) {
+    if (typeof candidate !== 'string' || candidate.length === 0) return false
+    const root = path.resolve(skillsRoot)
+    const target = path.resolve(candidate)
+    return target === root || target.startsWith(root + path.sep)
+  }
+  const sourceLabels = {
+    'project-dsh': '项目 .dsh',
+    'project-agents': '项目 .agents',
+    'user-dsh': '用户 .dsh',
+    'user-agents': '用户 .agents',
+    custom: '自定义目录',
+    bundled: '预置',
+    runtime: '运行时',
+  }
+  async function skillCatalog(sessionId) {
+    const agent = typeof sessionId === 'string' && sessionId.length > 0 ? ctx.agents.get(sessionId) : undefined
+    const snapshot = await ctx.skills.snapshot(agent
+      ? { scope: agent, cwd: agent.session.header.cwd }
+      : {})
+    const localByName = new Map(listSkills().map((item) => [item.name, item]))
+    return {
+      complete: snapshot.complete,
+      entries: snapshot.skills.map((skill) => {
+        const resourcePath = skill.resourceBase && skill.resourceBase.kind === 'directory'
+          ? skill.resourceBase.path
+          : ''
+        const editable = skill.source === 'user-dsh' && isInsideSkillsRoot(resourcePath)
+        const local = editable ? localByName.get(skill.name) : undefined
+        return {
+          name: skill.name,
+          description: skill.description || '',
+          whenToUse: skill.whenToUse || '',
+          enabled: skill.invocation ? skill.invocation.modelInvocable !== false : true,
+          source: skill.source || skill.provider || 'runtime',
+          sourceLabel: sourceLabels[skill.source] || skill.source || skill.provider || '运行时',
+          provider: skill.provider || '',
+          resourceBase: resourcePath,
+          editable,
+          synced: !!local?.synced,
+          syncedSource: local?.syncedSource,
+          kind: local?.kind || 'readonly',
+          path: local?.path || '',
+        }
+      }),
+    }
+  }
+  async function requireEditableSkill(name, sessionId) {
+    const catalog = await skillCatalog(sessionId)
+    const entry = catalog.entries.find((skill) => skill.name === name)
+    if (!entry) throw new Error('skill 不存在: ' + name)
+    if (!entry.editable) throw new Error('该 Skill 来自只读来源，不能修改: ' + entry.sourceLabel)
+    const local = findSkill(name)
+    if (!local || !isInsideSkillsRoot(path.join(skillsRoot, local.path))) throw new Error('用户 Skill 路径无效')
+    return local
+  }
 
   function setDisabled(text, name, disabled) {
     const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
@@ -114,20 +171,16 @@ export function apply(ctx) {
   }
 
   // ── skill 操作 ──
-  async function toggleSkill(name, enabled) {
-    const f = findSkill(name)
-    if (!f) throw new Error('skill 不存在: ' + name)
-    const p = path.join(skillsRoot, f.kind === 'dir' ? name + '/SKILL.md' : name + '.md')
+  async function toggleSkill(name, enabled, sessionId) {
+    const f = await requireEditableSkill(name, sessionId)
+    const entryPath = path.join(skillsRoot, f.path)
+    const p = f.kind === 'dir' ? path.join(entryPath, 'SKILL.md') : entryPath
     fs.writeFileSync(p, setDisabled(fs.readFileSync(p, 'utf8'), name, !enabled))
   }
-  async function deleteSkill(name) {
-    const f = findSkill(name)
-    if (!f) throw new Error('skill 不存在: ' + name)
-    // 软链：只删链接本身，不追目标；真实条目：删除整个目录或文件
-    const target = f.synced
-      ? path.join(skillsRoot, f.path)
-      : (f.kind === 'dir' ? path.join(skillsRoot, f.name) : path.join(skillsRoot, f.name + '.md'))
-    await run(['rm', '-rf', '--', target])
+  async function deleteSkill(name, sessionId) {
+    const f = await requireEditableSkill(name, sessionId)
+    // rmSync removes a symlink itself without following its target.
+    fs.rmSync(path.join(skillsRoot, f.path), { recursive: true, force: true })
   }
   async function importSkill(name, content) {
     if (!NAME_RE.test(name)) throw new Error('skill 名称需为 kebab-case（小写字母/数字/-）')
@@ -185,6 +238,7 @@ export function apply(ctx) {
     }
     if (s.url) e.url = s.url
     if (s.headers && Object.keys(s.headers).length) e.headers = s.headers
+    if (s.auth && s.auth.type === 'oauth') e.auth = { type: 'oauth' }
     const desc = s.description || s.purpose
     if (desc) e.description = desc
     if (s.enabled === false) e.enabled = false
@@ -200,6 +254,7 @@ export function apply(ctx) {
       cwd: e.cwd || '',
       url: e.url || '',
       headers: e.headers || {},
+      auth: e.auth && e.auth.type === 'oauth' ? { type: 'oauth' } : null,
       enabled: e.enabled !== false,
       description: e.description || '',
     }
@@ -229,7 +284,11 @@ export function apply(ctx) {
   // 配置仍是持久化的，但 MCP client 只挂到调用工具的 Agent scope。
   const agentStates = new WeakMap()
   const activeAgents = new Set()
+  const pendingOAuthReloads = new Set()
   let mcpPlugin = null
+  const oauthBroker = createOAuthBroker(ctx, {
+    onCredentialChanged(key) { scheduleOAuthReload(key) },
+  })
   const catalogPath = path.join(dshHome, 'mcp-tools-cache.json')
   let catalog = {}
   try {
@@ -259,8 +318,9 @@ export function apply(ctx) {
         },
       })
       await probe
+      const config = await clientConfig(server)
       const client = probe.ctx.plugin(plugin, {
-        ...clientConfig(server), reconnect: { enabled: false },
+        ...config, reconnect: { enabled: false },
       })
       await client
       if (client.state !== 2) throw new Error('MCP catalog client did not activate')
@@ -307,7 +367,7 @@ export function apply(ctx) {
     return mcpPlugin
   }
 
-  function clientConfig(s) {
+  async function clientConfig(s) {
     const base = {
       serverName: s.name,
       toolCallTimeoutMs: 60000,
@@ -320,7 +380,16 @@ export function apply(ctx) {
         args: Array.isArray(s.args) ? s.args : [], env: s.env || {}, cwd: s.cwd || '',
       })
     }
-    return Object.assign({}, base, { transport: 'streamable-http', url: s.url || '', headers: s.headers || {} })
+    const headers = Object.assign({}, s.headers || {})
+    if (s.auth && s.auth.type === 'oauth') {
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'authorization') delete headers[key]
+      }
+      const grant = await oauthBroker.ensure(s)
+      if (grant.refreshed) scheduleOAuthReload(grant.key)
+      headers.Authorization = 'Bearer ' + grant.accessToken
+    }
+    return Object.assign({}, base, { transport: 'streamable-http', url: s.url || '', headers })
   }
 
   // 实时统计某 Agent 可见的 server 工具（去掉 mcp__<name>__ 前缀）
@@ -411,7 +480,7 @@ export function apply(ctx) {
         const plugin = await getMcpPlugin()
         if (!plugin) throw new Error('无法加载 @deepseek-ai/dsh-mcp-client')
         if (state.disposed || current.generation !== generation) return { name: s.name, state: 'disposed', tools: [] }
-        fiber = agent.ctx.plugin(plugin, clientConfig(s))
+        fiber = agent.ctx.plugin(plugin, await clientConfig(s))
         current.fiber = fiber
         await fiber
         if (state.disposed || current.generation !== generation) {
@@ -461,6 +530,46 @@ export function apply(ctx) {
       activeAgents.delete(agent)
     })()
     return state.disposePromise
+  }
+
+  async function reloadActiveServer(server) {
+    for (const agent of [...activeAgents]) {
+      const state = agentStates.get(agent)
+      const record = state?.records.get(server.name)
+      if (!record?.wanted || state.disposed) continue
+      await unmountServer(agent, server.name, true)
+      if (!state.disposed) await mountServer(agent, server, 'reload')
+    }
+  }
+
+  async function reloadOAuthKey(key) {
+    for (const server of readServers()) {
+      if (!server.auth || server.auth.type !== 'oauth') continue
+      try {
+        const metadata = await oauthBroker.discover(server)
+        if (metadata.key === key) await reloadActiveServer(server)
+      } catch {}
+    }
+  }
+
+  function scheduleOAuthReload(key) {
+    if (pendingOAuthReloads.has(key)) return
+    pendingOAuthReloads.add(key)
+    queueMicrotask(() => {
+      runConfigSync(() => reloadOAuthKey(key))
+        .catch(() => {})
+        .finally(() => pendingOAuthReloads.delete(key))
+    })
+  }
+
+  async function refreshOAuthCredentials() {
+    for (const server of readServers()) {
+      if (!server.enabled || !server.auth || server.auth.type !== 'oauth') continue
+      try {
+        const grant = await oauthBroker.ensure(server)
+        if (grant.refreshed) scheduleOAuthReload(grant.key)
+      } catch {}
+    }
   }
 
   async function sessionMcp(args, exec) {
@@ -549,6 +658,7 @@ export function apply(ctx) {
   // ── mcp.json 变更轮询：刷新描述，并只重连已经被会话加载的 Server ──
   let lastVersion = null
   let configSync = Promise.resolve()
+  let nextOAuthRefreshAt = Date.now() + 60000
   let shuttingDown = false
   function runConfigSync(operation) {
     const task = configSync.catch(() => {}).then(operation)
@@ -577,6 +687,11 @@ export function apply(ctx) {
   }
   function pollConfig() {
     if (shuttingDown) return
+    const now = Date.now()
+    if (now >= nextOAuthRefreshAt) {
+      nextOAuthRefreshAt = now + 60000
+      runConfigSync(() => refreshOAuthCredentials())
+    }
     const version = configVersion()
     if (lastVersion === null) { lastVersion = version; return }
     if (version === lastVersion) return
@@ -613,15 +728,15 @@ export function apply(ctx) {
   const service = {
     configPath: mcpConfigPath,
     skillsRoot,
-    async listSkills() { return listSkills() },
-    async toggleSkill(name, enabled) { await toggleSkill(String(name), !!enabled); return { ok: true } },
-    async deleteSkill(name) { await deleteSkill(String(name)); return { ok: true } },
+    async listSkills(sessionId) { return skillCatalog(sessionId) },
+    async toggleSkill(name, enabled, sessionId) { await toggleSkill(String(name), !!enabled, sessionId); return { ok: true } },
+    async deleteSkill(name, sessionId) { await deleteSkill(String(name), sessionId); return { ok: true } },
     async importSkill(name, content) { await importSkill(String(name), String(content)); return { ok: true } },
     async syncSkills(source) { return syncSkills(String(source || '').trim()) },
-    async openSkill(name) {
-      const f = findSkill(String(name))
-      if (!f) throw new Error('skill 不存在')
-      const ok = await openWithSystem(path.join(skillsRoot, f.kind === 'dir' ? f.name + '/SKILL.md' : f.name + '.md'))
+    async openSkill(name, sessionId) {
+      const f = await requireEditableSkill(String(name), sessionId)
+      const entryPath = path.join(skillsRoot, f.path)
+      const ok = await openWithSystem(f.kind === 'dir' ? path.join(entryPath, 'SKILL.md') : entryPath)
       if (!ok) throw new Error('当前平台不支持打开文件（仅 macOS / Linux）')
       return { ok: true }
     },
@@ -632,11 +747,12 @@ export function apply(ctx) {
       return { ok: true }
     },
     async listServers() {
-      const servers = readServers().map((s) => Object.assign({}, s, {
+      const servers = await Promise.all(readServers().map(async (s) => Object.assign({}, s, {
         tools: catalog[s.name]?.tools || [],
         catalog: { updatedAt: catalog[s.name]?.updatedAt || null, error: catalog[s.name]?.error || null },
-        status: { state: s.enabled ? 'available' : 'disabled', error: null, tools: 0, scope: 'session' }
-      }))
+        status: { state: s.enabled ? 'available' : 'disabled', error: null, tools: 0, scope: 'session' },
+        oauth: await oauthBroker.status(s),
+      })))
       return { servers }
     },
     async saveServer(server) {
@@ -644,6 +760,9 @@ export function apply(ctx) {
         const s = server || {}
         if (!s.name || !NAME_RE.test(String(s.name))) throw new Error('server 名称需为 kebab-case')
         const name = String(s.name)
+        if (s.auth && s.auth.type === 'oauth' && s.transport !== 'streamable-http') {
+          throw new Error('OAuth 仅支持 streamable-http MCP')
+        }
         const clean = {
           name,
           transport: s.transport === 'stdio' ? 'stdio' : 'streamable-http',
@@ -653,12 +772,16 @@ export function apply(ctx) {
           cwd: s.cwd || '',
           url: s.url || '',
           headers: s.headers || {},
+          auth: s.auth && s.auth.type === 'oauth' ? { type: 'oauth' } : null,
           enabled: !!s.enabled,
           description: s.description || s.purpose || '',
         }
         const list = readServers()
         const i = list.findIndex((x) => x.name === name)
-        if (i >= 0) list[i] = clean; else list.push(clean)
+        if (i >= 0) {
+          if (list[i].url && list[i].url !== clean.url) oauthBroker.invalidate(list[i].url)
+          list[i] = clean
+        } else list.push(clean)
         writeServers(list)
         lastVersion = configVersion()
         for (const agent of activeAgents) {
@@ -676,6 +799,8 @@ export function apply(ctx) {
     async removeServer(name) {
       return runConfigSync(async () => {
         const serverName = String(name)
+        const existing = readServers().find((s) => s.name === serverName)
+        if (existing?.url) oauthBroker.invalidate(existing.url)
         const list = readServers().filter((s) => s.name !== serverName)
         writeServers(list)
         delete catalog[serverName]
@@ -688,6 +813,17 @@ export function apply(ctx) {
         refreshSection()
         return { ok: true }
       })
+    },
+    async oauthLogin(name, callbackOrigin) {
+      const server = readServers().find((item) => item.name === String(name))
+      if (!server) throw new Error('MCP server 不存在')
+      return oauthBroker.begin(server, callbackOrigin)
+    },
+    async oauthLogout(name) {
+      const server = readServers().find((item) => item.name === String(name))
+      if (!server) throw new Error('MCP server 不存在')
+      await oauthBroker.logout(server)
+      return { ok: true }
     },
     async refreshServer(name) {
       return runConfigSync(async () => {
@@ -723,33 +859,68 @@ export function apply(ctx) {
       res.end(JSON.stringify(data))
     } catch (e) { /* ignore */ }
   }
+  const sendOAuthPage = (res, code, title, message) => {
+    const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char])
+    const html = '<!doctype html><meta charset="utf-8"><title>' + escape(title) + '</title>' +
+      '<main style="font-family:system-ui;padding:32px;max-width:560px;margin:auto"><h1>' + escape(title) +
+      '</h1><p>' + escape(message) + '</p><p>可以关闭此窗口并返回 DSH。</p></main>'
+    res.writeHead(code, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'Cache-Control': 'no-store',
+    })
+    res.end(html)
+  }
   const readBody = (req) => new Promise((resolve, reject) => {
     let buf = ''
     req.on('data', (c) => { buf += c; if (buf.length > 2e6) { req.destroy(); reject(new Error('body too large')) } })
     req.on('end', () => { try { resolve(buf ? JSON.parse(buf) : {}) } catch (e) { reject(new Error('请求体不是合法 JSON')) } })
     req.on('error', reject)
   })
+  const requestLoopbackOrigin = (req) => {
+    const address = String(req.socket?.localAddress || '')
+    const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+    const port = Number(req.socket?.localPort)
+    if (!loopback || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error('OAuth 登录只允许通过 DSH 本机 Web 界面发起')
+    }
+    return 'http://127.0.0.1:' + port
+  }
   const restHandler = async (req, res) => {
     try {
-      const pathname = decodeURIComponent((req.url || '/').split('?')[0])
+      const requestUrl = new URL(req.url || '/', 'http://localhost')
+      const pathname = decodeURIComponent(requestUrl.pathname)
+      const sessionId = requestUrl.searchParams.get('sessionId') || undefined
+      if (req.method === 'GET' && pathname === oauthBroker.callbackPath) {
+        try {
+          await oauthBroker.callback(requestUrl)
+          return sendOAuthPage(res, 200, 'MCP 认证完成', 'OAuth 凭据已安全保存。')
+        } catch (error) {
+          return sendOAuthPage(res, 400, 'MCP 认证失败', String(error?.message || error))
+        }
+      }
       if (req.method === 'GET' && pathname === '/capabilities-api') {
-        const skills = await service.listSkills()
+        const skills = await service.listSkills(sessionId)
         const servers = await service.listServers()
-        return send(res, 200, { ok: true, dshHome, mcpConfigPath, skills: { user: skills }, mcp: servers })
+        return send(res, 200, { ok: true, dshHome, mcpConfigPath, skills: { catalog: skills.entries, complete: skills.complete }, mcp: servers })
       }
       if (req.method === 'POST') {
         const body = await readBody(req)
         let out
         switch (pathname) {
-          case '/capabilities-api/skill/toggle': out = await service.toggleSkill(body.name, body.enabled); break
-          case '/capabilities-api/skill/open': out = await service.openSkill(body.name); break
+          case '/capabilities-api/skill/toggle': out = await service.toggleSkill(body.name, body.enabled, body.sessionId); break
+          case '/capabilities-api/skill/open': out = await service.openSkill(body.name, body.sessionId); break
           case '/capabilities-api/skill/open-directory': out = await service.openSkillsDirectory(); break
-          case '/capabilities-api/skill/delete': out = await service.deleteSkill(body.name); break
+          case '/capabilities-api/skill/delete': out = await service.deleteSkill(body.name, body.sessionId); break
           case '/capabilities-api/skill/import': out = await service.importSkill(body.name, body.content); break
           case '/capabilities-api/skill/sync': out = await service.syncSkills(body.source); break
           case '/capabilities-api/mcp/save': out = await service.saveServer(body.server); break
           case '/capabilities-api/mcp/remove': out = await service.removeServer(body.name); break
           case '/capabilities-api/mcp/refresh': out = await service.refreshServer(body.name); break
+          case '/capabilities-api/mcp/oauth/login': out = await service.oauthLogin(body.name, requestLoopbackOrigin(req)); break
+          case '/capabilities-api/mcp/oauth/logout': out = await service.oauthLogout(body.name); break
           case '/capabilities-api/mcp/catalog': {
             out = await runConfigSync(async () => {
               const server = readServers().find((item) => item.name === body.name)
@@ -794,6 +965,7 @@ export function apply(ctx) {
     shuttingDown = true
     await configSync.catch(() => {})
     await Promise.allSettled([...activeAgents].map((agent) => clearAgent(agent)))
+    oauthBroker.cleanup()
     if (sectionDispose) { try { sectionDispose() } catch (e) { /* ignore */ } }
   })
 }

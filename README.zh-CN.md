@@ -22,7 +22,7 @@ MCP 管理
 设置
 ```
 
-三个管理入口分别打开独立的统一弹窗，不在 Settings 中重复显示。统一层只使用 DSH 语义化 token，并统一按钮、搜索框、列表、开关和复选框的视觉；Vision Bridge 固定使用配置的 `hybrid` 模式，不在输入区添加任何按钮；其插件卡片只保留提供方与模型选择，PDF 拖拽/粘贴能力保留。自动续写卡片只保留总开关。两张卡片均与内置 PluginCard 的度量一致。
+三个管理入口分别打开独立的统一弹窗，不在 Settings 中重复显示。MCP 管理支持标准 OAuth discovery、DCR、PKCE、登录状态、退出和自动刷新；同一 issuer + resource 下的多个 MCP 共用一次登录，凭据通过 DSH credentials 保存，不写入 `mcp.json`。统一层只使用 DSH 语义化 token，并统一按钮、搜索框、列表、开关和复选框的视觉；Vision Bridge 固定使用配置的 `hybrid` 模式，不在输入区添加任何按钮；其插件卡片只保留提供方与模型选择，PDF 拖拽/粘贴能力保留。自动续写卡片只保留总开关。两张卡片均与内置 PluginCard 的度量一致。
 
 ## 已知限制与后续工作
 
