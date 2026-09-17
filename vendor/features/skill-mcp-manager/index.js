@@ -814,10 +814,10 @@ export function apply(ctx) {
         return { ok: true }
       })
     },
-    async oauthLogin(name, callbackOrigin) {
+    async oauthLogin(name) {
       const server = readServers().find((item) => item.name === String(name))
       if (!server) throw new Error('MCP server 不存在')
-      return oauthBroker.begin(server, callbackOrigin)
+      return oauthBroker.begin(server)
     },
     async oauthLogout(name) {
       const server = readServers().find((item) => item.name === String(name))
@@ -859,48 +859,17 @@ export function apply(ctx) {
       res.end(JSON.stringify(data))
     } catch (e) { /* ignore */ }
   }
-  const sendOAuthPage = (res, code, title, message) => {
-    const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char])
-    const html = '<!doctype html><meta charset="utf-8"><title>' + escape(title) + '</title>' +
-      '<main style="font-family:system-ui;padding:32px;max-width:560px;margin:auto"><h1>' + escape(title) +
-      '</h1><p>' + escape(message) + '</p><p>可以关闭此窗口并返回 DSH。</p></main>'
-    res.writeHead(code, {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
-      'Cache-Control': 'no-store',
-    })
-    res.end(html)
-  }
   const readBody = (req) => new Promise((resolve, reject) => {
     let buf = ''
     req.on('data', (c) => { buf += c; if (buf.length > 2e6) { req.destroy(); reject(new Error('body too large')) } })
     req.on('end', () => { try { resolve(buf ? JSON.parse(buf) : {}) } catch (e) { reject(new Error('请求体不是合法 JSON')) } })
     req.on('error', reject)
   })
-  const requestLoopbackOrigin = (req) => {
-    const address = String(req.socket?.localAddress || '')
-    const loopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
-    const port = Number(req.socket?.localPort)
-    if (!loopback || !Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new Error('OAuth 登录只允许通过 DSH 本机 Web 界面发起')
-    }
-    return 'http://127.0.0.1:' + port
-  }
   const restHandler = async (req, res) => {
     try {
       const requestUrl = new URL(req.url || '/', 'http://localhost')
       const pathname = decodeURIComponent(requestUrl.pathname)
       const sessionId = requestUrl.searchParams.get('sessionId') || undefined
-      if (req.method === 'GET' && pathname === oauthBroker.callbackPath) {
-        try {
-          await oauthBroker.callback(requestUrl)
-          return sendOAuthPage(res, 200, 'MCP 认证完成', 'OAuth 凭据已安全保存。')
-        } catch (error) {
-          return sendOAuthPage(res, 400, 'MCP 认证失败', String(error?.message || error))
-        }
-      }
       if (req.method === 'GET' && pathname === '/capabilities-api') {
         const skills = await service.listSkills(sessionId)
         const servers = await service.listServers()
@@ -919,7 +888,7 @@ export function apply(ctx) {
           case '/capabilities-api/mcp/save': out = await service.saveServer(body.server); break
           case '/capabilities-api/mcp/remove': out = await service.removeServer(body.name); break
           case '/capabilities-api/mcp/refresh': out = await service.refreshServer(body.name); break
-          case '/capabilities-api/mcp/oauth/login': out = await service.oauthLogin(body.name, requestLoopbackOrigin(req)); break
+          case '/capabilities-api/mcp/oauth/login': out = await service.oauthLogin(body.name); break
           case '/capabilities-api/mcp/oauth/logout': out = await service.oauthLogout(body.name); break
           case '/capabilities-api/mcp/catalog': {
             out = await runConfigSync(async () => {

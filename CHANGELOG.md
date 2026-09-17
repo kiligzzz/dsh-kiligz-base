@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Open MCP OAuth directly in the system browser and receive callbacks on an independent random loopback port, avoiding the authenticated DSH Web route and intermediate popup.
 - Add MCP OAuth login, shared issuer/resource credentials, automatic token refresh, and login/logout status controls to Skill MCP Manager while preserving session-scoped lazy loading.
 - Replace `dsh-vision-router` with `@goodandready/dsh-vision-bridge` (pinned GitHub commit) and drop the generated Vision Router client-boundary prelude.
 - Drop the Bridge composer controls entirely: vision stays on the configured `hybrid` mode, so neither a mode toggle nor a PDF button is added next to the message input. The PDF drop/paste path remains available.
