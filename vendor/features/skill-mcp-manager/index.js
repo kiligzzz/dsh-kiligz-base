@@ -114,9 +114,10 @@ export function apply(ctx) {
   }
   async function skillCatalog(sessionId) {
     const agent = typeof sessionId === 'string' && sessionId.length > 0 ? ctx.agents.get(sessionId) : undefined
+    const signal = AbortSignal.timeout(10000)
     const snapshot = await ctx.skills.snapshot(agent
-      ? { scope: agent, cwd: agent.session.header.cwd }
-      : {})
+      ? { scope: agent, cwd: agent.session.header.cwd, signal }
+      : { signal })
     const localByName = new Map(listSkills().map((item) => [item.name, item]))
     return {
       complete: snapshot.complete,
@@ -182,10 +183,39 @@ export function apply(ctx) {
     // rmSync removes a symlink itself without following its target.
     fs.rmSync(path.join(skillsRoot, f.path), { recursive: true, force: true })
   }
-  async function importSkill(name, content) {
-    if (!NAME_RE.test(name)) throw new Error('skill 名称需为 kebab-case（小写字母/数字/-）')
+  async function importSkill(source) {
+    if (typeof source !== 'string' || !path.isAbsolute(source)) throw new Error('请选择 Skill 目录')
+    const sourcePath = path.resolve(source)
+    const directoryName = path.basename(sourcePath)
+    if (directoryName.startsWith('.') || !fs.statSync(sourcePath).isDirectory()) throw new Error('请选择有效的 Skill 目录')
+    const skillFile = path.join(sourcePath, 'SKILL.md')
+    if (!fs.existsSync(skillFile) || !fs.statSync(skillFile).isFile()) throw new Error('所选目录根目录缺少 SKILL.md')
+    const skillName = parseFrontmatter(fs.readFileSync(skillFile, 'utf8')).name || directoryName
+    if (findSkill(skillName)) throw new Error('已存在同名 Skill: ' + skillName)
     fs.mkdirSync(skillsRoot, { recursive: true })
-    fs.writeFileSync(path.join(skillsRoot, name + '.md'), content)
+    const destination = path.join(skillsRoot, directoryName)
+    const realSource = fs.realpathSync(sourcePath)
+    const realDestination = path.join(fs.realpathSync(skillsRoot), directoryName)
+    const relative = path.relative(realSource, realDestination)
+    if (relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
+      throw new Error('不能将 Skill 目录复制到自身或其子目录')
+    }
+    try { await fs.promises.mkdir(destination) } catch (error) {
+      if (error.code === 'EEXIST') throw new Error('目标目录已存在: ' + destination)
+      throw error
+    }
+    try {
+      for (const entry of await fs.promises.readdir(realSource)) {
+        await fs.promises.cp(path.join(realSource, entry), path.join(destination, entry), {
+          recursive: true, force: false, errorOnExist: true, verbatimSymlinks: true,
+        })
+      }
+      await fs.promises.chmod(destination, (await fs.promises.stat(realSource)).mode & 0o777)
+    } catch (error) {
+      await fs.promises.rm(destination, { recursive: true, force: true })
+      throw error
+    }
+    return { ok: true, name: skillName, path: destination }
   }
   async function syncSkills(source) {
     if (!source) throw new Error('请填写源文件夹路径')
@@ -731,7 +761,7 @@ export function apply(ctx) {
     async listSkills(sessionId) { return skillCatalog(sessionId) },
     async toggleSkill(name, enabled, sessionId) { await toggleSkill(String(name), !!enabled, sessionId); return { ok: true } },
     async deleteSkill(name, sessionId) { await deleteSkill(String(name), sessionId); return { ok: true } },
-    async importSkill(name, content) { await importSkill(String(name), String(content)); return { ok: true } },
+    async importSkill(source) { return importSkill(source) },
     async syncSkills(source) { return syncSkills(String(source || '').trim()) },
     async openSkill(name, sessionId) {
       const f = await requireEditableSkill(String(name), sessionId)
@@ -901,6 +931,10 @@ export function apply(ctx) {
           return sendOAuthPage(res, 400, 'MCP 认证失败', String(error?.message || error))
         }
       }
+      if (req.method === 'GET' && pathname === '/capabilities-api/skills') {
+        const skills = await service.listSkills(sessionId)
+        return send(res, 200, { ok: true, skills: { catalog: skills.entries, complete: skills.complete } })
+      }
       if (req.method === 'GET' && pathname === '/capabilities-api') {
         const skills = await service.listSkills(sessionId)
         const servers = await service.listServers()
@@ -914,7 +948,7 @@ export function apply(ctx) {
           case '/capabilities-api/skill/open': out = await service.openSkill(body.name, body.sessionId); break
           case '/capabilities-api/skill/open-directory': out = await service.openSkillsDirectory(); break
           case '/capabilities-api/skill/delete': out = await service.deleteSkill(body.name, body.sessionId); break
-          case '/capabilities-api/skill/import': out = await service.importSkill(body.name, body.content); break
+          case '/capabilities-api/skill/import': out = await service.importSkill(body.source); break
           case '/capabilities-api/skill/sync': out = await service.syncSkills(body.source); break
           case '/capabilities-api/mcp/save': out = await service.saveServer(body.server); break
           case '/capabilities-api/mcp/remove': out = await service.removeServer(body.name); break

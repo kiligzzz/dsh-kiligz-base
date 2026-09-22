@@ -60,14 +60,15 @@
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins",
         "@deepseek-ai/dsh-client-ui-slots",
-        "@deepseek-ai/dsh-client-ui-theme"
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-workspace"
       ]
     }
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "verify": "node scripts/verify.mjs",
-    "test:mcp": "node vendor/features/skill-mcp-manager/test/verify.mjs && node vendor/features/skill-mcp-manager/test/lazy-mcp.mjs && node vendor/features/skill-mcp-manager/test/oauth-broker.mjs",
+    "test:mcp": "node vendor/features/skill-mcp-manager/test/verify.mjs && node vendor/features/skill-mcp-manager/test/lazy-mcp.mjs && node vendor/features/skill-mcp-manager/test/oauth-broker.mjs && node vendor/features/skill-mcp-manager/test/skill-import.mjs && node vendor/features/skill-mcp-manager/test/skill-list.mjs && node vendor/features/skill-mcp-manager/test/skill-page.mjs",
     "test": "npm run verify && npm run test:mcp"
   },
   "dependencies": {

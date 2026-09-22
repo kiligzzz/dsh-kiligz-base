@@ -46,7 +46,7 @@ check('host exports apply', /export function apply\(ctx\)/.test(host))
 // 3. client slots + 0.1.2 compat
 check('client registers Skill section', client.includes('id: "capabilities-skills"'))
 check('client registers MCP section', client.includes('id: "capabilities-mcp"'))
-check('client exports inject slots', client.includes('inject: ["slots"]'))
+check('client injects slots and directory picker', client.includes('inject: ["slots", "uiWorkspace"]'))
 check('client apply uses ctx.slots', client.includes('const slots = ctx.slots;'))
 check('client has no ctx.get("slots") call', !/const slots = ctx\.get\("slots"\)/.test(client))
 check('package inject uses dsh-client-store', !JSON.stringify(pkg.dsh.client.inject).includes('dsh-client-runtime'))

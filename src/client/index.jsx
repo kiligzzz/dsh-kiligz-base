@@ -6,7 +6,7 @@ import {
 import { McpIcon, ScheduleIcon, SkillIcon } from './icons.jsx'
 import { installBaseStyles } from './styles.js'
 
-export const inject = ['slots', 'locale', 'connection']
+export const inject = ['slots', 'locale', 'connection', 'uiWorkspace']
 
 const NS = 'dsh-kiligz-base'
 
@@ -91,7 +91,7 @@ function AutomationPanel({ panel, rpc, t, permissionT, modelT, onClose }) {
   })
 }
 
-function SkillPanel({ panel, t, sessionId }) {
+function SkillPanel({ panel, t, sessionId, pickDirectory }) {
   const [error, setError] = React.useState('')
   const openDirectory = () => {
     setError('')
@@ -110,11 +110,11 @@ function SkillPanel({ panel, t, sessionId }) {
       }, React.createElement(IconFolderOpenOutline16, { size: 16 })),
     ),
     error.length > 0 ? React.createElement('p', { className: 'kb-inline-error', role: 'alert' }, error) : null,
-    React.createElement(panel.SkillPage, { sessionId }),
+    React.createElement(panel.SkillPage, { sessionId, pickDirectory }),
   )
 }
 
-function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t, onClose, sessionId }) {
+function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t, onClose, sessionId, pickDirectory }) {
   if (entryId === 'automation' && panels.automation !== undefined) {
     return React.createElement(AutomationPanel, {
       panel: panels.automation,
@@ -126,7 +126,7 @@ function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t
     })
   }
   if (entryId === 'skill' && panels.skillMcp !== undefined) {
-    return React.createElement(SkillPanel, { panel: panels.skillMcp, t, sessionId })
+    return React.createElement(SkillPanel, { panel: panels.skillMcp, t, sessionId, pickDirectory })
   }
   if (entryId === 'mcp' && panels.skillMcp !== undefined) {
     return React.createElement(panels.skillMcp.McpPage)
@@ -134,7 +134,7 @@ function ManagerBody({ entryId, panels, rpc, automationT, permissionT, modelT, t
   return React.createElement('p', { className: 'kb-inline-error', role: 'alert' }, t('actionFailed'))
 }
 
-function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissionT, modelT, t, useSessions }) {
+function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissionT, modelT, t, useSessions, pickDirectory }) {
   const sessionId = useSessions((snapshot) => snapshot.current)
   const entry = ENTRY_DEFINITIONS.find((candidate) => candidate.id === entryId) ?? ENTRY_DEFINITIONS[0]
   const [open, setOpen] = React.useState(false)
@@ -176,6 +176,7 @@ function FooterEntry({ wide, entryId, label, panels, rpc, automationT, permissio
         t,
         onClose: close,
         sessionId,
+        pickDirectory,
       }),
     )) : null,
   )
@@ -209,6 +210,7 @@ export function apply(ctx) {
           label: label(),
           panels,
           rpc: ctx.connection.rpc,
+          pickDirectory: () => ctx.uiWorkspace.pickDirectory(),
           automationT,
           permissionT,
           modelT,

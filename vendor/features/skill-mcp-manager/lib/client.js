@@ -81,6 +81,17 @@ window.__ModuleLoader__.load({
       if (!d || d.ok !== true) throw new Error((d && d.error) || "请求失败");
       return d;
     }
+    async function apiGetSkills(sessionId, signal) {
+      const query = sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "";
+      const r = await fetch("/capabilities-api/skills" + query, { signal });
+      if (r.status === 404 || r.status === 405) throw new Error("Skill 列表接口尚未加载，请重新加载插件或重启 DSH 后重试");
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error((d && d.error) || "Skill 列表请求失败（HTTP " + r.status + "）");
+      if (!d || d.ok !== true || !Array.isArray(d.skills && d.skills.catalog)) {
+        throw new Error((d && d.error) || "Skill 列表响应格式错误，请重新加载插件后重试");
+      }
+      return d;
+    }
     async function apiPost(path, body) {
       const r = await fetch(path, {
         method: "POST",
@@ -125,22 +136,49 @@ window.__ModuleLoader__.load({
       ));
     }
 
-    function normalizeName(fname) {
-      return String(fname).replace(/\.md$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    }
-
     // ── Skill 管理页 ──
-    function SkillPage({ sessionId }) {
+    function SkillPage({ sessionId, pickDirectory }) {
       const [data, setData] = React.useState(null);
       const [search, setSearch] = React.useState("");
       const [syncSource, setSyncSource] = React.useState("");
       const [syncMsg, setSyncMsg] = React.useState("");
       const [confirmDel, setConfirmDel] = React.useState(null);
       const [err, setErr] = React.useState("");
-      const fileRef = React.useRef(null);
+      const [importing, setImporting] = React.useState(false);
+      const [importMsg, setImportMsg] = React.useState("");
+      const importPending = React.useRef(false);
 
-      const refresh = () => apiGet(sessionId).then(setData).catch((e) => setErr(msg(e)));
-      React.useEffect(() => { refresh(); }, [sessionId]);
+      const [loading, setLoading] = React.useState(true);
+      const loadRequest = React.useRef(null);
+      const refresh = async () => {
+        if (loadRequest.current) loadRequest.current.abort();
+        const controller = new AbortController();
+        loadRequest.current = controller;
+        setLoading(true);
+        setErr("");
+        const timeout = setTimeout(() => controller.abort(new Error("Skill 列表加载超时，请重试")), 15000);
+        try {
+          const result = await apiGetSkills(sessionId, controller.signal);
+          if (loadRequest.current === controller) setData(result);
+        } catch (error) {
+          if (loadRequest.current === controller) setErr(msg(controller.signal.aborted ? controller.signal.reason : error));
+        } finally {
+          clearTimeout(timeout);
+          if (loadRequest.current === controller) {
+            loadRequest.current = null;
+            setLoading(false);
+          }
+        }
+      };
+      React.useEffect(() => {
+        setData(null);
+        refresh();
+        return () => {
+          const controller = loadRequest.current;
+          loadRequest.current = null;
+          if (controller) controller.abort();
+        };
+      }, [sessionId]);
 
       const toggle = (name, enabled) =>
         apiPost("/capabilities-api/skill/toggle", { name, enabled, sessionId }).then(refresh).catch((e) => setErr(msg(e)));
@@ -151,18 +189,26 @@ window.__ModuleLoader__.load({
         setConfirmDel(null);
         apiPost("/capabilities-api/skill/delete", { name: item.name, sessionId }).then(refresh).catch((e) => setErr(msg(e)));
       };
-      const onFile = (e) => {
-        const f = e.target.files && e.target.files[0];
-        e.target.value = "";
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          const content = String(reader.result || "");
-          const name = normalizeName(f.name);
-          if (!name) { setErr("文件名无法转为 kebab-case"); return; }
-          apiPost("/capabilities-api/skill/import", { name, content }).then(refresh).catch((x) => setErr(msg(x)));
-        };
-        reader.readAsText(f);
+      const doImport = async () => {
+        if (importPending.current) return;
+        importPending.current = true;
+        setImporting(true);
+        setErr("");
+        setImportMsg("");
+        try {
+          const source = await pickDirectory();
+          if (!source) return;
+          setImportMsg("正在复制 Skill 目录…");
+          const result = await apiPost("/capabilities-api/skill/import", { source });
+          setImportMsg("已导入: " + result.path);
+          await refresh();
+        } catch (error) {
+          setImportMsg("");
+          setErr(msg(error));
+        } finally {
+          importPending.current = false;
+          setImporting(false);
+        }
       };
       const doSync = () => {
         const source = syncSource.trim();
@@ -206,9 +252,9 @@ window.__ModuleLoader__.load({
             React.createElement("div", { className: "cm-title" }, "DSH Skill MCP Manager"),
             React.createElement("div", { className: "cm-sub" }, "当前会话的官方 Skill 目录；仅 ~/.dsh/skills 条目可修改"),
           ),
-          React.createElement("button", { className: "cm-btn primary", onClick: () => fileRef.current && fileRef.current.click() }, "+ 导入 Skill"),
+          React.createElement("button", { className: "cm-btn primary", onClick: doImport, disabled: importing, "aria-busy": importing, title: "选择包含 SKILL.md 的目录，完整复制到 ~/.dsh/skills" }, "+ 导入 Skill"),
         ),
-        React.createElement("input", { ref: fileRef, type: "file", accept: ".md,.markdown", style: { display: "none" }, onChange: onFile }),
+        importMsg ? React.createElement("div", { className: "cm-sub", role: "status" }, importMsg) : null,
         React.createElement("input", { className: "cm-search", value: search, onChange: (e) => setSearch(e.target.value), placeholder: "搜索 skill…" }),
         React.createElement("div", { className: "cm-sync" },
           React.createElement("div", { className: "cm-label" }, "从文件夹同步（软链到 ~/.dsh/skills，源目录改动实时生效）"),
@@ -218,9 +264,10 @@ window.__ModuleLoader__.load({
           ),
           syncMsg ? React.createElement("div", { className: "cm-sub" }, syncMsg) : null,
         ),
-        err ? React.createElement("div", { className: "cm-err" }, err) : null,
+        err ? React.createElement("div", { className: "cm-err", role: "alert" }, err,
+          React.createElement("button", { className: "cm-btn", onClick: refresh, disabled: loading }, "重试")) : null,
         rows.length ? React.createElement("div", { className: "cm-list" }, rows)
-          : React.createElement("div", { className: "cm-empty" }, data ? (q ? "无匹配 skill。" : "暂无 Skill。点击「+ 导入 Skill」或从文件夹同步。") : "加载中…"),
+          : React.createElement("div", { className: "cm-empty", role: "status" }, loading ? "加载中…" : data ? (q ? "无匹配 skill。" : "暂无 Skill。点击「+ 导入 Skill」或从文件夹同步。") : "Skill 列表加载失败"),
         confirmDel ? React.createElement(ConfirmModal, {
           title: confirmDel.synced ? "移除同步 Skill" : "删除 Skill",
           message: delMsg,
@@ -511,7 +558,7 @@ window.__ModuleLoader__.load({
       name: "@kiligzzz/dsh-skill-mcp-manager",
       // 0.1.2+ 兼容：客户端服务需在 bundle 内声明 inject（exports.inject，服务名列表）。
       // slots 为 hardDependency，缺失时 loader 抛 "cannot get property slots without inject"。
-      inject: ["slots"],
+      inject: ["slots", "uiWorkspace"],
       apply(ctx) {
         // 0.1.2+ 兼容：官方 slots 服务改为 hardDependency 形态（ctx.slots + inject 声明）。
         // ctx.get("slots") 在 0.1.2 的 fiber 时序下返回 undefined → 整个 client 半静默退出。
@@ -520,7 +567,7 @@ window.__ModuleLoader__.load({
         slots.inject("settings.section", () => {
           slots.register(
             { name: "settings.section", id: "capabilities-skills", order: 40, label: () => "Skill" },
-            () => React.createElement(SkillPage),
+            () => React.createElement(SkillPage, { pickDirectory: () => ctx.uiWorkspace.pickDirectory() }),
           );
           slots.register(
             { name: "settings.section", id: "capabilities-mcp", order: 41, label: () => "MCP" },
