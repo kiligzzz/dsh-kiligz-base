@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { createServer } from 'node:http'
+import { spawn } from 'node:child_process'
 import {
   discoverOAuthServerInfo,
   exchangeAuthorization,
@@ -10,7 +12,7 @@ import {
 import { checkResourceAllowed, resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 
 const RECORD_SCOPE = 'skill-mcp-manager'
-const CALLBACK_PATH = '/capabilities-api/mcp/oauth/callback'
+const CALLBACK_PATH = '/oauth/callback'
 const RECORD_VERSION = 1
 const REFRESH_SKEW_MS = 5 * 60 * 1000
 const HARD_REAUTH_MS = 365 * 24 * 60 * 60 * 1000
@@ -18,6 +20,16 @@ const DISCOVERY_TTL_MS = 5 * 60 * 1000
 
 function randomToken(bytes = 32) {
   return randomBytes(bytes).toString('base64url')
+}
+
+function openExternal(url) {
+  const command = process.platform === 'darwin' ? 'open' : (process.platform === 'win32' ? 'cmd' : 'xdg-open')
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url]
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => { child.unref(); resolve() })
+  })
 }
 
 function safeUrl(value, label) {
@@ -97,7 +109,53 @@ export function createOAuthBroker(ctx, hooks = {}) {
   const credentials = ctx.get('credentials')
   if (!credentials) throw new Error('skill-mcp-manager OAuth 需要 credentials 服务')
   const pending = new Map()
+  const callbackServers = new Set()
   const discoveryCache = new Map()
+
+  function callbackPage(res, status, title, message) {
+    const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char])
+    const html = '<!doctype html><meta charset="utf-8"><title>' + escape(title) + '</title>' +
+      '<main style="font-family:system-ui;padding:32px;max-width:560px;margin:auto"><h1>' + escape(title) +
+      '</h1><p>' + escape(message) + '</p><p>可以关闭此窗口并返回 DSH。</p></main>'
+    res.writeHead(status, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
+    })
+    res.end(html)
+  }
+
+  async function createCallbackServer() {
+    let server
+    const callbackPromise = new Promise((resolve, reject) => {
+      server = createServer((req, res) => {
+        const requestUrl = new URL(req.url || '/', 'http://127.0.0.1')
+        if (req.method !== 'GET' || requestUrl.pathname !== CALLBACK_PATH) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+          res.end('not found')
+          return
+        }
+        resolve({ requestUrl, res })
+      })
+      server.once('error', reject)
+    })
+    await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    callbackServers.add(server)
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('无法创建 OAuth callback server')
+    return {
+      callbackUrl: new URL(CALLBACK_PATH, 'http://127.0.0.1:' + address.port),
+      callbackPromise,
+      close() { callbackServers.delete(server); server.close() },
+    }
+  }
 
   async function discover(server) {
     const cached = discoveryCache.get(server.url)
@@ -203,7 +261,7 @@ export function createOAuthBroker(ctx, hooks = {}) {
     })
   }
 
-  async function begin(server, callbackOrigin) {
+  async function begin(server) {
     if (!server || server.transport !== 'streamable-http' || server.auth?.type !== 'oauth') {
       throw new Error('该 MCP 未配置 OAuth')
     }
@@ -213,37 +271,62 @@ export function createOAuthBroker(ctx, hooks = {}) {
       await hooks.onMetadata?.(server.name, metadata)
       return { authorized: true, status: publicGrant(existing) }
     }
-    const origin = safeUrl(callbackOrigin, 'DSH callback origin')
-    if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(origin.hostname) || origin.pathname !== '/') {
-      throw new Error('OAuth callback origin 必须是 DSH loopback 根地址')
+    const callbackServer = await createCallbackServer()
+    let state
+    try {
+      const client = await register(metadata, callbackServer.callbackUrl)
+      state = randomToken(32)
+      const started = await startAuthorization(new URL(metadata.authorizationServerUrl), {
+        metadata: metadata.authorizationServerMetadata,
+        clientInformation: client,
+        redirectUrl: callbackServer.callbackUrl,
+        scope: metadata.scopes.join(' ') || undefined,
+        state,
+        resource: new URL(metadata.resource),
+      })
+      const expiresAt = Date.now() + 10 * 60 * 1000
+      const expiryTimer = setTimeout(() => {
+        pending.delete(state)
+        callbackServer.close()
+      }, 10 * 60 * 1000)
+      pending.set(state, {
+        state,
+        serverName: server.name,
+        metadata,
+        client,
+        verifier: started.codeVerifier,
+        callbackUrl: String(callbackServer.callbackUrl),
+        expiresAt,
+        expiryTimer,
+      })
+      void callbackServer.callbackPromise.then(async ({ requestUrl, res }) => {
+        try {
+          await callback(requestUrl)
+          callbackPage(res, 200, 'MCP 认证完成', 'OAuth 凭据已安全保存。')
+        } catch (error) {
+          callbackPage(res, 400, 'MCP 认证失败', String(error?.message || error))
+        } finally {
+          callbackServer.close()
+        }
+      }).catch(() => callbackServer.close())
+      await (hooks.openExternal || openExternal)(String(started.authorizationUrl))
+      return { authorized: false, launched: true, expiresAt }
+    } catch (error) {
+      if (state) {
+        const transaction = pending.get(state)
+        if (transaction?.expiryTimer) clearTimeout(transaction.expiryTimer)
+        pending.delete(state)
+      }
+      callbackServer.close()
+      throw error
     }
-    const callbackUrl = new URL(CALLBACK_PATH, origin)
-    const client = await register(metadata, callbackUrl)
-    const state = randomToken(32)
-    const started = await startAuthorization(new URL(metadata.authorizationServerUrl), {
-      metadata: metadata.authorizationServerMetadata,
-      clientInformation: client,
-      redirectUrl: callbackUrl,
-      scope: metadata.scopes.join(' ') || undefined,
-      state,
-      resource: new URL(metadata.resource),
-    })
-    pending.set(state, {
-      state,
-      serverName: server.name,
-      metadata,
-      client,
-      verifier: started.codeVerifier,
-      callbackUrl: String(callbackUrl),
-      expiresAt: Date.now() + 10 * 60 * 1000,
-    })
-    return { authorized: false, url: String(started.authorizationUrl), expiresAt: Date.now() + 10 * 60 * 1000 }
   }
 
   async function callback(requestUrl) {
     const state = requestUrl.searchParams.get('state') || ''
     const transaction = pending.get(state)
     pending.delete(state)
+    if (transaction?.expiryTimer) clearTimeout(transaction.expiryTimer)
     if (!transaction || transaction.expiresAt <= Date.now()) throw new Error('OAuth 登录请求已失效，请重新发起')
     if (requestUrl.searchParams.get('error')) throw new Error('OAuth 授权被拒绝')
     const code = requestUrl.searchParams.get('code')
@@ -329,9 +412,14 @@ export function createOAuthBroker(ctx, hooks = {}) {
   }
 
   function cleanup() {
+    for (const transaction of pending.values()) {
+      if (transaction.expiryTimer) clearTimeout(transaction.expiryTimer)
+    }
     pending.clear()
+    for (const server of callbackServers) server.close()
+    callbackServers.clear()
     discoveryCache.clear()
   }
 
-  return { begin, callback, ensure, status, logout, discover, invalidate, cleanup, callbackPath: CALLBACK_PATH }
+  return { begin, ensure, status, logout, discover, invalidate, cleanup }
 }

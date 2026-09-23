@@ -288,7 +288,6 @@ window.__ModuleLoader__.load({
       const [confirmDel, setConfirmDel] = React.useState(null);
       const [confirmLogout, setConfirmLogout] = React.useState(null);
       const [oauthBusy, setOauthBusy] = React.useState({});
-      const [oauthLinks, setOauthLinks] = React.useState({});
       const [err, setErr] = React.useState("");
 
       const refresh = () => apiGet().then(setData).catch((e) => setErr(msg(e)));
@@ -342,20 +341,14 @@ window.__ModuleLoader__.load({
       };
       const startOauth = (name) => {
         setErr("");
-        const popup = window.open("about:blank", "_blank");
-        if (popup) popup.opener = null;
         setOauthBusy((current) => Object.assign({}, current, { [name]: Date.now() }));
         apiPost("/capabilities-api/mcp/oauth/login", { name }).then((result) => {
           if (result.authorized) {
-            if (popup) popup.close();
             setOauthBusy((current) => { const next = Object.assign({}, current); delete next[name]; return next; });
             return refreshOne(name);
           }
-          if (!result.url) throw new Error("OAuth 登录未返回授权地址");
-          if (popup) popup.location.href = result.url;
-          else setOauthLinks((current) => Object.assign({}, current, { [name]: result.url }));
+          if (!result.launched) throw new Error("OAuth 登录页未能打开");
         }).catch((e) => {
-          if (popup) popup.close();
           setOauthBusy((current) => { const next = Object.assign({}, current); delete next[name]; return next; });
           setErr(msg(e));
         });
@@ -377,7 +370,6 @@ window.__ModuleLoader__.load({
                 const server = next.mcp.servers.find((item) => item.name === name);
                 if (server && server.oauth && server.oauth.state === "authorized") {
                   delete updated[name];
-                  setOauthLinks((links) => { const nextLinks = Object.assign({}, links); delete nextLinks[name]; return nextLinks; });
                 } else if (Date.now() - updated[name] > 10 * 60 * 1000) {
                   delete updated[name];
                   setErr("OAuth 登录已超时，请重新认证");
@@ -440,7 +432,6 @@ window.__ModuleLoader__.load({
             React.createElement("div", { className: "cm-toolbox" },
               isOauth ? React.createElement("div", { className: "cm-oauth-row" },
                 React.createElement("span", { className: "cm-src" }, "OAuth：" + oauthLabel),
-                oauthLinks[s.name] ? React.createElement("a", { className: "cm-btn", href: oauthLinks[s.name], target: "_blank", rel: "noopener noreferrer" }, "打开登录页") : null,
                 oauth.state === "authorized"
                   ? React.createElement("button", { className: "cm-btn", onClick: () => setConfirmLogout(s.name) }, "退出")
                   : React.createElement("button", { className: "cm-btn", disabled: !!oauthBusy[s.name], onClick: () => startOauth(s.name) }, oauthBusy[s.name] ? "等待授权…" : "登录"),

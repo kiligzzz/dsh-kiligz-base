@@ -18,6 +18,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const name = pkg.name
 const client = fs.readFileSync(path.join(root, 'lib/client.js'), 'utf8')
 const host = fs.readFileSync(path.join(root, 'index.js'), 'utf8')
+const oauthHost = fs.readFileSync(path.join(root, 'oauth-broker.js'), 'utf8')
 const patch = fs.readFileSync(path.join(root, 'cordis.patch.yml'), 'utf8')
 
 let failed = false
@@ -58,12 +59,13 @@ check('host does not globally sync MCP at startup', !host.includes('syncAll()'))
 check('host cleans Agent MCP state', host.includes("ctx.on('agent/disposed'"))
 check('host preserves OAuth config', host.includes("e.auth = { type: 'oauth' }"))
 check('host injects OAuth Bearer dynamically', host.includes("headers.Authorization = 'Bearer ' + grant.accessToken"))
-check('host exposes OAuth callback', host.includes("oauthBroker.callbackPath"))
-check('host derives callback from loopback socket', host.includes('requestLoopbackOrigin(req)'))
+check('host owns an independent loopback callback server', oauthHost.includes("server.listen(0, '127.0.0.1'"))
+check('host opens OAuth in the system browser', oauthHost.includes("process.platform === 'darwin' ? 'open'"))
 check('host does not depend on DSH_WEB_URL', !host.includes('DSH_WEB_URL'))
 check('host refreshes whole OAuth credential group', host.includes('if (grant.refreshed) scheduleOAuthReload(grant.key)'))
 check('client exposes OAuth config mode', client.includes('OAuth（浏览器登录并自动刷新）'))
 check('client exposes OAuth login and logout', client.includes('/capabilities-api/mcp/oauth/login') && client.includes('/capabilities-api/mcp/oauth/logout'))
+check('client does not open an intermediate OAuth popup', !client.includes('window.open("about:blank"'))
 
 // 5. REST surface used by the client exists in the host
 for (const ep of ['/capabilities-api', '/capabilities-api/skill/toggle', '/capabilities-api/skill/open',

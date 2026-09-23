@@ -7,6 +7,9 @@ const records = new Map()
 const changed = []
 const requests = []
 let refreshCount = 0
+let callbackUrl
+let launchedUrl
+let callbackRequest
 
 const credentials = {
   async readRecord(key) { return records.get(key) },
@@ -56,7 +59,11 @@ globalThis.fetch = async (url, options = {}) => {
       code_challenge_methods_supported: ['S256'],
     })
   }
-  if (value.endsWith('/register')) return response({ ...JSON.parse(options.body), client_id: 'dcr-client', token_endpoint_auth_method: 'none' }, 201)
+  if (value.endsWith('/register')) {
+    const metadata = JSON.parse(options.body)
+    callbackUrl = metadata.redirect_uris[0]
+    return response({ ...metadata, client_id: 'dcr-client', token_endpoint_auth_method: 'none' }, 201)
+  }
   if (value.endsWith('/token')) {
     const params = new URLSearchParams(options.body)
     const localRefresh = ['header', Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 604800 })).toString('base64url'), 'signature'].join('.')
@@ -80,6 +87,14 @@ globalThis.fetch = async (url, options = {}) => {
 const ctx = { get(name) { return name === 'credentials' ? credentials : undefined } }
 const broker = createOAuthBroker(ctx, {
   onCredentialChanged(key) { changed.push(key) },
+  async openExternal(url) {
+    launchedUrl = url
+    const authorize = new URL(url)
+    const target = new URL(callbackUrl)
+    target.searchParams.set('state', authorize.searchParams.get('state'))
+    target.searchParams.set('code', 'ok')
+    callbackRequest = originalFetch(target)
+  },
 })
 const db = {
   name: 'popaidock-db', transport: 'streamable-http',
@@ -88,13 +103,17 @@ const db = {
 const sls = { ...db, name: 'popaidock-sls', url: 'https://popaidock.example.com/mcp/css/sls' }
 
 try {
-  const started = await broker.begin(db, 'http://127.0.0.1:43120')
+  const started = await broker.begin(db)
   assert.equal(started.authorized, false)
-  const authorize = new URL(started.url)
+  assert.equal(started.launched, true)
+  const authorize = new URL(launchedUrl)
   assert.equal(authorize.origin + authorize.pathname, 'https://popaidock.example.com/authorize')
   assert.equal(authorize.searchParams.get('resource'), 'https://popaidock.example.com/mcp')
   assert.equal(authorize.searchParams.get('code_challenge_method'), 'S256')
-  await broker.callback(new URL('http://127.0.0.1:43120/capabilities-api/mcp/oauth/callback?state=' + encodeURIComponent(authorize.searchParams.get('state')) + '&code=ok'))
+  assert.match(callbackUrl, /^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/)
+  const callbackResponse = await callbackRequest
+  assert.equal(callbackResponse.status, 200)
+  assert.match(await callbackResponse.text(), /MCP 认证完成/)
 
   assert.equal((await broker.status(db)).state, 'authorized')
   assert.equal((await broker.status(sls)).state, 'authorized', 'same issuer/resource shares one grant')
